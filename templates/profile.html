@@ -1,0 +1,141 @@
+{{ define "title" }}Profile – Speak Easy{{ end }}
+{{ define "content" }}
+    <div class="profile-page container">
+        <div class="profile-header">
+            <div class="profile-avatar">
+                <img src="https://api.dicebear.com/7.x/bottts/svg?seed={{ .Avatar }}" alt="User Avatar" />
+            </div>
+            <div class="profile-info">
+                <h2 class="profile-username"> {{ .Username }}</h2>
+                <p class="profile-bio">{{ .Bio }}</p>
+                <div class="profile-stats">
+                    <button class="user-posts-link clickable-stat" type="button">
+                        <strong>{{ .Stats.PostCount }}</strong> Posts
+                    </button>
+                    <button class="user-likes-link clickable-stat" type="button">
+                        <strong>{{ .Stats.LikesGiven }}</strong> Likes
+                    </button>
+                    <button class="user-dislikes-link clickable-stat" type="button">
+                        <strong>{{ .Stats.DislikesGiven }}</strong> Dislikes
+                    </button>
+                </div>
+                <button class="btn pill profile-edit-btn">Edit Profile</button>
+            </div>
+        </div>
+
+        <div class="profile-activity">
+            <h3>Recent Posts</h3>
+            <ul class="profile-post-list">
+                {{ if .Posts }}
+                {{ range .Posts }}
+                    <li>
+                  
+                   <a href="#" class="profile-post-title"
+                        data-id="{{ .ID }}"
+                        data-title="{{ .Title }}"
+                        data-content="{{ .Content }}"
+                        data-date="{{ .CreatedAt.Format "Jan 2, 2006" }}"
+                        data-likes="{{ .Likes }}"
+                        data-dislikes="{{ .Dislikes }}"
+                        data-comments="{{ .NumComments }}">
+                        {{ .Title }}
+                    </a>
+                    <span class="profile-post-date">{{ .CreatedAt.Format "Jan 2, 2006" }}</span>
+                  </li>
+
+                {{ end }}
+                {{ else }}
+                    <li><em>No recent posts yet.</em></li>
+                {{ end }}   
+            </ul>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div id="editProfileModal" class="modal-overlay">
+        <div class="modal-card">
+            <button class="modal-close" data-modal-close>&times;</button>
+            <h2>Edit Profile</h2>
+            <form id="editProfileForm" class="auth-form">
+                <label for="edit-username">Username</label>
+                <input type="text" id="edit-username" name="username">
+                <label for="edit-bio">Bio</label>
+                <textarea id="edit-bio" name="bio" rows="3"></textarea>
+                <input type="hidden" id="edit-avatarSeed" name="avatarSeed">
+
+                <label>Avatar</label>
+                <div class="avatar-preview" style="margin:1rem 0; cursor:pointer;">
+                    <img id="avatarPreviewImg"
+                         src=""
+                         alt="Avatar preview"
+                         style="width:72px;height:72px;border-radius:50%;">
+                    <p class="small">Click avatar to change</p>
+                </div>
+
+                <button type="submit" class="btn pill">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Avatar Selection Modal -->
+    <div id="avatarSelectModal" class="modal-overlay">
+        <div class="modal-card avatar-picker-card">
+            <button class="modal-close" data-modal-close>&times;</button>
+            <h2>Select Your Avatar</h2>
+            <div class="avatar-grid"></div>
+        </div>
+    </div>
+
+
+    <!-- Post Preview Modal -->
+    <div id="postPreviewModal" class="modal-overlay">
+         {{ if .Posts }}
+            {{ range .Posts }}
+            <div class="modal-card post-card" id="modal-post-card">
+
+                <button class="modal-close" data-modal-close>&times;</button>
+            
+                <div class="post-header">
+                    <h2><a id="previewTitle" href="#"></a></h2>
+                    <p class="meta" id="previewDate"></p>
+                </div>
+                    <div class="badges">
+                        {{ range .Categories }}
+                            <option value="{{ .ID }}">{{ .Name }}</option>
+                        {{ end }}
+                    </div>
+            
+                <div class="snippet" id="previewContent" style="white-space: pre-wrap;"></div>
+            
+                <div class="actions">
+                    <div class="reaction-group">
+                    <button class="like-btn" data-clicked="false">
+                        <span class="count" id="previewLikes">0</span>
+                    </button>
+                    <button class="dislike-btn" data-clicked="false">
+                        <span class="count" id="previewDislikes">0</span>
+                    </button>
+                    <button class="comment-toggle-btn">
+                        <span class="count" id="previewComments">0</span>
+                    </button>
+                    </div>
+                </div>
+                <div class="comments-section hidden" id="previewCommentsSection">
+                    <div class="comments-list" id="previewCommentsList"></div>
+                
+                    <form class="comment-form" id="previewCommentForm" data-post-id="">
+                    <textarea placeholder="Write a comment..." required></textarea>
+                    <button type="submit">Post</button>
+                    </form>
+                </div>
+            </div>
+          {{ end }}
+        {{ end }}
+      </div>
+      
+
+{{ end }}
+{{ define "profile" }}
+    {{ template "base" . }}
+{{ end }}
+

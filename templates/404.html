@@ -1,0 +1,13 @@
+	{{ define "content" }}
+    <section class="error-404">
+        <img src="/static/img/404.png" alt="404 Not Found" class="error-img" />
+        <h1>Oops! Page not found</h1>
+        <p>The page you're looking for doesn't exist or has been moved.</p>
+        <a href="/" class="btn back-home">Go back home</a>
+    </section>
+{{ end }}
+
+{{ define "title" }}404 - Not Found{{ end }}
+{{ define "home" }}
+    {{ template "base" . }}
+{{ end }}

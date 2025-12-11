@@ -1,0 +1,11 @@
+<h1>Category: {{ .CategoryName }}</h1>
+
+{{ range .Posts }}
+    <div class="post-card">
+        <h2><a href="/post/{{ .ID }}">{{ .Title }}</a></h2>
+        <p>{{ .Author }} — {{ .CreatedAt }}</p>
+        <p class="snippet">{{ .Content }}</p>
+    </div>
+{{ else }}
+    <p>No posts in this category yet.</p>
+{{ end }}
