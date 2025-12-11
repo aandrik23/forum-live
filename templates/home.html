@@ -2,7 +2,11 @@
 
 
 {{ define "content" }}
-<p class="welcome-msg">Welcome, {{ .Username }}!</p>
+    {{ if .User }} 
+        <p class="welcome-msg">Welcome, {{ .Username }}!</p>
+    {{ else }}
+        <p class="welcome-msg">Welcome!</p>
+    {{ end }}
     <!-- Filter Bar -->
     <section class="filter-bar">
         <button onclick="location.href='/'">All Posts</button>
