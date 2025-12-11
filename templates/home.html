@@ -120,6 +120,11 @@
     </div>
 </div>
 
+
+{{ define "home_content" }}
+    {{ template "content" . }}
+{{ end }}
+
 {{ define "home" }}
     {{ template "base" . }}
 {{ end }}

@@ -11,36 +11,50 @@ import (
 )
 
 func CreateHandler(w http.ResponseWriter, r *http.Request) {
-
 	payload := authutils.GetJWTFromContext(r.Context())
 
 	if r.Method == http.MethodGet {
-		// ✅ Load categories from DB
+		// Load categories from DB
 		categories, err := database.GetAllCategories()
 		if err != nil {
 			http.Error(w, "Unable to load categories", http.StatusInternalServerError)
 			return
 		}
 
-		renderTemplate(w, "post_detail", map[string]any{
-			"Categories": categories,
-			"User":       payload.Username, // or payload.UserID / payload.Username depending on your base.html
-		})
+		// Use your common PageData so base.html works
+		data := PageData{}
+		if payload != nil && payload.Role != authutils.RoleAnonymous {
+			data.Username = payload.Username
+			data.Role = payload.Role
+			data.User = true
+		}
+		data.Categories = categories
+
+		// Support partials for SPA
+		if r.URL.Query().Get("partial") == "1" {
+			renderTemplate(w, "post_create_content", data)
+			return
+		}
+
+		renderTemplate(w, "post_create", data)
 		return
 	}
 
 	if r.Method == http.MethodPost {
-		er := r.ParseForm()
-
-		// payload := authutils.GetJWTFromContext(r.Context())
-
-		if er != nil {
+		if err := r.ParseForm(); err != nil {
 			http.Error(w, "Invalid Data", http.StatusBadRequest)
+			return
 		}
+
+		if payload == nil || payload.Role == authutils.RoleAnonymous {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		title := strings.TrimSpace(r.FormValue("title"))
 		content := strings.TrimSpace(r.FormValue("content"))
 		categoryIDs := r.Form["categories"]
-		author := payload.UserID // Implement based on your session
+		author := payload.UserID
 
 		if title == "" || content == "" {
 			http.Error(w, "Missing fields", http.StatusBadRequest)
@@ -66,16 +80,15 @@ func CreateHandler(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:  time.Now(),
 		}
 
-		err := database.InsertPostWithCategories(post)
-
-		if err != nil {
+		if err := database.InsertPostWithCategories(post); err != nil {
 			http.Error(w, "Failed to save post: "+err.Error(), http.StatusInternalServerError)
-
 			return
 		}
 
+		// For now: regular redirect, SPA JS can still navigate back to home
 		http.Redirect(w, r, "/", http.StatusSeeOther)
-
+		return
 	}
 
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }

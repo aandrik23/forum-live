@@ -15,11 +15,6 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := PageData{}
 
-	// if payload == nil || payload.Role == authutils.RoleAnonymous {
-	// 	renderTemplate(w, "guest", data) // or reuse base with condition
-	// 	return
-	// }
-
 	if payload != nil && payload.Role != authutils.RoleAnonymous {
 		data.Username = payload.Username
 		data.Role = payload.Role
@@ -28,6 +23,7 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		data.User = false
 	}
+
 	// Get query params
 	filter := r.URL.Query().Get("filter")
 	categoryIDStr := r.URL.Query().Get("category")
@@ -83,6 +79,13 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data.Categories = Categories
+
+	// detect partial
+	if r.URL.Query().Get("partial") == "1" {
+		// render ONLY the inner content block
+		renderTemplate(w, "home_content", data)
+		return
+	}
 
 	renderTemplate(w, "home", data)
 }

@@ -47,5 +47,10 @@ func ProfileHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Rendering profile for", payload.Username, "with avatar:", payload.Avatar)
 
+	if r.URL.Query().Get("partial") == "1" {
+		renderTemplate(w, "profile_content", data)
+		return
+	}
+
 	renderTemplate(w, "profile", data)
 }
