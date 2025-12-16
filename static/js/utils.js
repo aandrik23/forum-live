@@ -1,4 +1,4 @@
-import { registerModal } from "./auth.js";
+
 
 // A static list of 20 seed strings you want to offer
 export const AVATAR_SEEDS = [
@@ -8,17 +8,13 @@ export const AVATAR_SEEDS = [
     "quincy","rick","sybil","trent","victor",
 ];
 
-export function redirectIfError() {
-
-    // clicking on profile as anonymous redirect to register
-    const params = new URLSearchParams(window.location.search);
-    const show = params.get('show');
-    if (show === 'login') {
-        openModal(loginModal);
-    } else if (show === 'register') {
-        openModal(registerModal);
-    }
-}
+export function fillCsrfInputs() {
+    const csrfToken = getCookie("csrf_token");
+    if (!csrfToken) return;
+    document.querySelectorAll(".csrf_token_input").forEach((el) => {
+      el.value = csrfToken;
+    });
+  }
 
 export function getCookie(name) {
     const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -36,3 +32,13 @@ export function closeModal(modalEl) {
 export function isAnonymous() {
     return document.body.dataset.showLogin === "1";
   }
+
+export function syncTheme() {
+    const saved = localStorage.getItem("theme");
+    const isDark = saved === "dark";
+    document.documentElement.classList.toggle("dark-mode", isDark);
+  
+    const toggle = document.getElementById("theme-toggle");
+    if (toggle) toggle.checked = isDark;
+  }
+  

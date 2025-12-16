@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	authutils "forum/internal/authUtils"
 	"forum/internal/database"
 	"forum/internal/models"
@@ -10,37 +11,44 @@ import (
 	"strconv"
 )
 
-func HomeHandler(w http.ResponseWriter, r *http.Request) {
+type HomeAPIResponse struct {
+	User       bool              `json:"user"`
+	Username   string            `json:"username,omitempty"`
+	Role       string            `json:"role,omitempty"`
+	Posts      []models.Post     `json:"posts"`
+	Categories []models.Category `json:"categories"`
+}
+
+func HomeAPIHandler(w http.ResponseWriter, r *http.Request) {
 	payload := authutils.GetJWTFromContext(r.Context())
 
-	data := PageData{}
-
-	if payload != nil && payload.Role != authutils.RoleAnonymous {
-		data.Username = payload.Username
-		data.Role = payload.Role
-		data.User = true
-		data.Posts = []models.Post{}
-	} else {
-		data.User = false
+	resp := HomeAPIResponse{
+		Posts: []models.Post{},
 	}
 
-	// Get query params
+	if payload != nil && payload.Role != authutils.RoleAnonymous {
+		resp.User = true
+		resp.Username = payload.Username
+		resp.Role = payload.Role
+	} else {
+		resp.User = false
+	}
+
+	// same query params as your HTML handler
 	filter := r.URL.Query().Get("filter")
 	categoryIDStr := r.URL.Query().Get("category")
 
 	var posts []models.Post
 	var err error
+
 	if categoryIDStr != "" {
-		// Filter posts by category ID
 		categoryID, err := strconv.Atoi(categoryIDStr)
 		if err != nil {
 			http.Error(w, "Invalid category id", http.StatusBadRequest)
 			return
 		}
 		posts, err = database.GetPostsByCategoryID(categoryID)
-
 	} else {
-		// Use filter param if no category filter
 		switch filter {
 		case "created":
 			if payload != nil {
@@ -68,24 +76,21 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(posts, func(i, j int) bool {
 		return posts[i].CreatedAt.After(posts[j].CreatedAt)
 	})
+	resp.Posts = posts
 
-	data.Posts = posts
-
-	Categories, err := database.GetAllCategories()
-
+	cats, err := database.GetAllCategories()
 	if err != nil {
 		http.Error(w, "unable to load categories", http.StatusInternalServerError)
 		return
 	}
+	resp.Categories = cats
 
-	data.Categories = Categories
-
-	// detect partial
-	if r.URL.Query().Get("partial") == "1" {
-		// render ONLY the inner content block
-		renderTemplate(w, "home_content", data)
+	// JSON response
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(true)
+	if err := enc.Encode(resp); err != nil {
+		http.Error(w, "failed to encode json", http.StatusInternalServerError)
 		return
 	}
-
-	renderTemplate(w, "home", data)
 }

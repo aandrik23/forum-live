@@ -1,151 +1,63 @@
 package internal
 
 import (
-	"fmt"
 	authutils "forum/internal/authUtils"
 	"forum/internal/handlers"
 	"net/http"
 )
 
-var rootRoutes = map[string]http.HandlerFunc{
-	"/":     homeHandler,
-	"/home": homeHandler,
+// apiProtected wraps a handler with Auth + CSRF + Role checks
+func apiAuth(h http.HandlerFunc) http.HandlerFunc {
+	return authutils.AuthMiddleware(h)
 }
 
-// rootHandler does map lookup, calls real handler or 404
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	if h, ok := rootRoutes[r.URL.Path]; ok {
-		h(w, r)
-	} else {
-		notFoundHandler(w, r)
-	}
+func apiProtected(h http.HandlerFunc) http.HandlerFunc {
+	return authutils.AuthMiddleware(
+		authutils.CSRFMiddleware(
+			authutils.RequireRoleMiddleware(authutils.RoleUser, authutils.RoleAdmin)(h),
+		),
+	)
 }
 
 func Handlers() {
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	mux := http.NewServeMux()
 
-	// Home: allow anon or user, decided inside HomeHandler
-	http.HandleFunc("/", authutils.AuthMiddleware(rootHandler))
-	http.HandleFunc("/home", authutils.AuthMiddleware(rootHandler))
+	// 1) static
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
-	// Public
-	http.HandleFunc("/register", registerHandler)
-	http.HandleFunc("/login", loginHandler)
+	// 2) API routes
+	mux.HandleFunc("/api/home", apiAuth(handlers.HomeAPIHandler))
+	mux.HandleFunc("/api/post", apiAuth(handlers.PostDetailAPIHandler))
+	mux.HandleFunc("/api/profile", apiAuth(handlers.ProfileAPIHandler))
 
-	// Protected: ONLY logged in users/admins
-	http.HandleFunc("/logout",
-		authutils.AuthMiddleware(handlers.LogoutHandler))
+	mux.HandleFunc("/api/profile/update", apiProtected(handlers.UpdateProfileHandler))
 
-	http.HandleFunc("/admin",
-		authutils.AuthMiddleware(
-			authutils.CSRFMiddleware(
-				authutils.RequireRoleMiddleware(authutils.RoleAdmin)(adminHandler),
-			),
-		),
-	)
+	mux.HandleFunc("/api/posts", apiProtected(handlers.CreatePostAPIHandler))
+	mux.HandleFunc("/api/posts/delete", apiProtected(handlers.DeleteAPIHandler))
+	mux.HandleFunc("/api/posts/new", apiProtected(handlers.PostCreateInitAPIHandler))
+	mux.HandleFunc("/api/posts/react", apiProtected(handlers.LikesHandler))
+	mux.HandleFunc("/api/posts/comments", apiAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			handlers.CommentsGetHandler(w, r)
+			return
+		}
+		if r.Method == http.MethodPost {
+			apiProtected(handlers.CommentsHandler)(w, r)
+			return
+		}
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	}))
 
-	http.HandleFunc("/post/",
-		authutils.AuthMiddleware(
-			authutils.CSRFMiddleware(
-				authutils.RequireRoleMiddleware(authutils.RoleUser, authutils.RoleAdmin)(postDetailHandler),
-			),
-		),
-	)
+	// 3) auth endpoints (API)
+	mux.HandleFunc("/api/register", handlers.RegisterHandler)
+	mux.HandleFunc("/api/login", handlers.LoginHandler)
 
-	http.HandleFunc("/profile",
-		authutils.AuthMiddleware(
-			authutils.CSRFMiddleware(
-				authutils.RequireRoleMiddleware(authutils.RoleUser, authutils.RoleAdmin)(profileHandler),
-			),
-		),
-	)
+	// (Recommended) make logout API too:
+	mux.HandleFunc("/api/logout", apiAuth(handlers.LogoutHandler))
 
-	http.HandleFunc("/profile/update",
-		authutils.AuthMiddleware(
-			authutils.CSRFMiddleware(
-				authutils.RequireRoleMiddleware(authutils.RoleUser, authutils.RoleAdmin)(profileUpdateHandler),
-			),
-		),
-	)
+	// 4) SPA shell catch-all (PUBLIC)
+	mux.HandleFunc("/", apiAuth(handlers.SPAShellHandler))
 
-	http.HandleFunc("/posts/new",
-		authutils.AuthMiddleware(
-			authutils.CSRFMiddleware(
-				authutils.RequireRoleMiddleware(authutils.RoleUser, authutils.RoleAdmin)(createHandler),
-			),
-		),
-	)
-
-	http.HandleFunc("/posts/react",
-		authutils.AuthMiddleware(
-			authutils.CSRFMiddleware(
-				authutils.RequireRoleMiddleware(authutils.RoleUser, authutils.RoleAdmin)(reactHandler),
-			),
-		),
-	)
-
-	http.HandleFunc("/posts/comments",
-		authutils.AuthMiddleware(
-			authutils.CSRFMiddleware(
-				authutils.RequireRoleMiddleware(authutils.RoleUser, authutils.RoleAdmin)(commentsHandler),
-			),
-		),
-	)
-
-	http.HandleFunc("/posts/delete",
-		authutils.AuthMiddleware(
-			authutils.CSRFMiddleware(
-				authutils.RequireRoleMiddleware(authutils.RoleUser, authutils.RoleAdmin)(deleteHandler),
-			),
-		),
-	)
-}
-
-func profileUpdateHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.UpdateProfileHandler(w, r)
-}
-
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.HomeHandler(w, r)
-}
-
-func loginHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.LoginHandler(w, r)
-}
-
-func registerHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.RegisterHandler(w, r)
-}
-
-func profileHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.ProfileHandler(w, r)
-}
-
-func postDetailHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.PostDetailHandler(w, r)
-}
-
-func adminHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Welcome to the admin dashboard")
-}
-
-func createHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.CreateHandler(w, r)
-}
-func reactHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.LikesHandler(w, r)
-}
-
-func commentsHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.CommentsHandler(w, r)
-}
-
-/// ERROR HANDLERS
-
-func notFoundHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.NotFoundHandler(w, r)
-}
-
-func deleteHandler(w http.ResponseWriter, r *http.Request) {
-	handlers.DeleteHandler(w, r)
+	// Make this mux the one used by the server
+	http.Handle("/", mux)
 }

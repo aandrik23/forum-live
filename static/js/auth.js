@@ -1,4 +1,5 @@
-import {redirectIfError, openModal, closeModal} from "./utils.js";
+import { openModal, closeModal, syncTheme } from "./utils.js";
+import { loadPage } from "./loadPage.js";
 
 const footerLoginLink = document.getElementById("footerLoginLink");
 const footerRegisterLink = document.getElementById("footerRegisterLink");
@@ -6,79 +7,150 @@ const globalCloseBtns = document.querySelectorAll(".modal-close");
 const loginBtn = document.getElementById("loginBtn");
 const registerBtn = document.getElementById("registerBtn");
 const loginModal = document.getElementById("loginModal");
+
+export function setAuthState(isLoggedIn) {
+  document.body.dataset.showLogin = isLoggedIn ? "0" : "1";
+
+  // IMPORTANT: keep CSS-driven anon overlay in sync
+  document.body.classList.toggle("force-black", !isLoggedIn);
+
+  // Navbar buttons
+  document.getElementById("loginBtn")?.classList.toggle("hidden", isLoggedIn);
+  document.getElementById("registerBtn")?.classList.toggle("hidden", isLoggedIn);
+  document.getElementById("logoutBtn")?.classList.toggle("hidden", !isLoggedIn);
+
+  // Footer links
+  document.getElementById("footerLoginLink")?.classList.toggle("hidden", isLoggedIn);
+  document.getElementById("footerRegisterLink")?.classList.toggle("hidden", isLoggedIn);
+}
+
+
+export function isLoggedIn() {
+  return document.body.dataset.showLogin !== "1";
+}
+
 export const registerModal = document.getElementById("registerModal");
 
 export function initRegisterForm() {
-    const form = document.getElementById('registerForm');
-    if (!form) return;
-  
-    form.addEventListener('submit', async e => {
-      e.preventDefault();
-  
-      // package up field values
-      const data = new URLSearchParams(new FormData(form));
-      const errorEl = form.querySelector('.form-error');
-      errorEl.textContent = '';
-  
-      try {
-        const res = await fetch(form.action, {
-          method: 'POST',
-          headers: { 'Accept': 'application/json' },
-          body: data
-        });
-  
-        if (res.ok) {
-          // success → go to home
-          window.location.href = '/home';
-        } else {
-          // failure → show server‐side message in modal
-          const payload = await res.json();
-          console.log(payload.error);
-          errorEl.textContent = payload.error || 'Something went wrong';
-        }
-      } catch (err) {
-        console.error('Network error:', err);
-        errorEl.textContent = 'Network error, please try again';
-      }
+  const form = document.getElementById("registerForm");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const data = new URLSearchParams(new FormData(form));
+    const errorEl = form.querySelector(".form-error");
+    errorEl.textContent = "";
+
+    const res = await fetch(form.action, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      credentials: "include",
+      body: data,
     });
-  }
-  
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      errorEl.textContent = payload.error || "Something went wrong";
+      return;
+    }
+
+    await res.json().catch(() => null);
+
+    setAuthState(true);
+    syncTheme();
+    closeModal(registerModal);
+
+    const next = sessionStorage.getItem("postLoginPath") || "/home";
+    sessionStorage.removeItem("postLoginPath");
+
+    history.replaceState({}, "", next);
+    await loadPage(next); // or navigate(next) if your navigate doesn't block /home
+  });
+}
+
 export function initLoginForm() {
-    const form = document.getElementById('loginForm');
-    if (!form) return;
-  
-    form.addEventListener('submit', async e => {
-      e.preventDefault();
-      const data = new URLSearchParams(new FormData(form));
-      const errorEl = form.querySelector('.form-error');
-      errorEl.textContent = '';
-  
-      try {
-        const res = await fetch(form.action, {
-          method: 'POST',
-          headers: { 'Accept': 'application/json' },
-          body: data
-        });
-  
-        if (res.ok) {
-          const payload = await res.json();
-          window.location.href = payload.redirect || '/home';
-        } else {
-          const payload = await res.json();
-          errorEl.textContent = payload.error || 'Invalid credentials';
-        }
-      } catch (err) {
-        console.error('Network error:', err);
-        form.querySelector('.form-error').textContent = 'Network error, please try again';
-      }
+  const form = document.getElementById("loginForm");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const data = new URLSearchParams(new FormData(form));
+    const errorEl = form.querySelector(".form-error");
+    errorEl.textContent = "";
+
+    const res = await fetch(form.action, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      credentials: "include",
+      body: data,
     });
-  }
+
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      errorEl.textContent = payload.error || "Invalid credentials";
+      return;
+    }
+
+    await res.json().catch(() => null);
+
+    setAuthState(true);
+    syncTheme();
+    closeModal(document.getElementById("loginModal"));
+
+    const next = sessionStorage.getItem("postLoginPath") || "/home";
+    sessionStorage.removeItem("postLoginPath");
+
+    history.replaceState({}, "", next);
+    await loadPage(next);
+  });
+}
+
+export function initLogout() {
+  const btn = document.getElementById("logoutBtn");
+  if (!btn) return;
+
+   //  prevent attaching multiple times
+  if (btn.dataset.bound === "1") return;
+  btn.dataset.bound = "1";
   
+  btn.addEventListener("click", async () => {
+    const res = await fetch("/api/logout", {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+
+    if (!res.ok) {
+      console.error("Logout failed:", res.status);
+      return;
+    }
+
+    //  Switch to anon state immediately
+    setAuthState(false);
+
+    //  Blank app content (no anon content allowed)
+    const root = document.getElementById("app-root");
+    if (root) root.innerHTML = "";
+
+    //  Reset URL
+    history.replaceState({}, "", "/");
+
+    //  Force login modal
+    document.getElementById("loginModal")?.classList.add("open");
+  });
+}
 
   // Modal wiring (login/register)
 export function initAuthModals() {
   loginBtn?.addEventListener('click', () => openModal(loginModal));
-  registerBtn?.addEventListener('click', () => openModal(registerModal));
+  registerBtn?.addEventListener('click', () => {
+    // allow register even in forced-login state
+    closeModal(loginModal);
+    openModal(registerModal);
+  });
+
 
   // Footer links
   footerLoginLink?.addEventListener('click', e => {
@@ -87,6 +159,7 @@ export function initAuthModals() {
   });
   footerRegisterLink?.addEventListener('click', e => {
       e.preventDefault();
+      closeModal(loginModal);
       openModal(registerModal);
   });
 
@@ -104,26 +177,35 @@ export function initAuthModals() {
 
   // Global close buttons
   globalCloseBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-          const modal = btn.closest('.modal-overlay');
-          closeModal(modal);
-      });
+    btn.addEventListener('click', () => {
+      const isAnon = document.body.dataset.showLogin === "1";
+      if (isAnon) return; // 🔒 block close
+  
+      const modal = btn.closest('.modal-overlay');
+      closeModal(modal);
+    });
   });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && document.body.dataset.showLogin === "1") {
+      e.preventDefault();
+    }
+  });
+  
 
   // Click outside content to close
-  const isLoggedIn = document.body.dataset.showLogin !== "1";  
-  // showLogin = 1 → NOT logged in
-  
   [loginModal, registerModal].forEach(modal => {
-      modal?.addEventListener('click', e => {
-          if (!isLoggedIn) return; // disable backdrop close for anon users
-          if (e.target === modal) closeModal(modal);
-      });
+    modal?.addEventListener('click', e => {
+      const isLoggedInNow = document.body.dataset.showLogin !== "1";
+      if (!isLoggedInNow) return; // disable backdrop close for anon users
+      if (e.target === modal) closeModal(modal);
+    });
   });
 
-  if (document.body.dataset.showLogin === "1" && loginModal) {
-    openModal(loginModal);
-  }
+  const url = new URL(window.location.href);
+  const show = url.searchParams.get("show");
   
-  redirectIfError();
+  // Only open modals when URL explicitly asks for it
+  if (show === "register") openModal(registerModal);
+  if (show === "login") openModal(loginModal);
+  
 }

@@ -1,49 +1,73 @@
 import { initLikeButtons } from "./comments.js";
 import { openModal, closeModal, getCookie, isAnonymous } from "./utils.js";
+import { navigate } from "./router.js"
 
 export function initDeletePostModal() {
-    if (isAnonymous()) return;
+  if (isAnonymous()) return;
 
-    let currentDeleteForm = null;
-    const deleteModal = document.getElementById('postDeleteModal');
-    const cancelBtn = document.getElementById('cancelPostDelete');
-    const confirmBtn = document.getElementById('confirmPostDelete');
-    const csrfToken = getCookie('csrf_token'); // Make sure this function is defined
+  const deleteModal = document.getElementById("postDeleteModal");
+  const cancelBtn = document.getElementById("cancelPostDelete");
+  const confirmBtn = document.getElementById("confirmPostDelete");
+  if (!deleteModal || !cancelBtn || !confirmBtn) return;
 
-    if (!deleteModal || !cancelBtn || !confirmBtn) return;
+  let currentPostId = null;
 
-    // Attach listener to all delete forms
-    document.querySelectorAll('.delete-form').forEach(form => {
-        form.addEventListener('submit', e => {
-            e.preventDefault();
-            currentDeleteForm = form;
-            deleteModal.classList.remove('hidden');
-        });
+  // open modal
+  document.querySelectorAll("[data-delete-post-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentPostId = Number(btn.dataset.deletePostId);
+      deleteModal.classList.remove("hidden");
     });
+  });
 
-    cancelBtn.addEventListener('click', () => {
-        deleteModal.classList.add('hidden');
-        currentDeleteForm = null;
-    });
+  // cancel
+  cancelBtn.addEventListener("click", () => {
+    deleteModal.classList.add("hidden");
+    currentPostId = null;
+  });
 
-    confirmBtn.addEventListener('click', () => {
-        if (currentDeleteForm) {
-            const csrfInput = currentDeleteForm.querySelector('input[name="csrf_token"]');
-            if (csrfInput && csrfToken) {
-                csrfInput.value = csrfToken;
-            }
-            currentDeleteForm.submit();
-        }
-    });
+  // confirm delete
+  confirmBtn.addEventListener("click", async () => {
+    if (!currentPostId) return;
 
-    // Optional: close modal when clicking outside modal content
-    deleteModal.addEventListener('click', e => {
-        if (e.target === deleteModal) {
-            deleteModal.classList.add('hidden');
-            currentDeleteForm = null;
-        }
-    });
+    try {
+      const csrf = getCookie("csrf_token");
+      const res = await fetch("/api/posts/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrf,
+        },
+        credentials: "include",
+        body: JSON.stringify({ post_id: currentPostId }),
+      });
+
+      if (!res.ok) {
+        console.error("Delete failed:", await res.text());
+        return;
+      }
+
+      // remove the post card immediately
+      document
+        .querySelector(`.post-card[data-post-id="${currentPostId}"]`)
+        ?.remove();
+
+      deleteModal.classList.add("hidden");
+      currentPostId = null;
+    } catch (e) {
+      console.error("Delete request failed:", e);
+    }
+  });
+
+  // click backdrop closes
+  deleteModal.addEventListener("click", (e) => {
+    if (e.target === deleteModal) {
+      deleteModal.classList.add("hidden");
+      currentPostId = null;
+    }
+  });
 }
+
 
 export function initPostPreviewModal() {
   const modal = document.getElementById('postPreviewModal');
@@ -101,15 +125,15 @@ export function initPostPreviewModal() {
       commentForm.dataset.postId = postId;
 
       // Load comments dynamically
-      fetch(`/posts/${postId}/comments`)
+      fetch(`/api/posts/comments?post_id=${postId}`)
         .then(res => res.json())
         .then(comments => {
           comments.forEach(c => {
             const commentEl = document.createElement('div');
             commentEl.classList.add('comment');
             commentEl.innerHTML = `
-              <p><strong>${c.author}</strong>: ${c.content}</p>
-              <p class="meta">${c.created_at}</p>
+            <p><strong>${escapeHtml(c.Author)}</strong>: ${escapeHtml(c.Content)}</p>
+            <p class="meta">${c.created_at}</p>
               <div class="actions">
                 <button data-post-id="${c.id}" data-target-type="comment" class="like-btn" data-clicked="false">
                     <span class="count">${c.likes}</span>
@@ -148,7 +172,7 @@ export function initProfilePostsButton() {
     const postsBtn = document.querySelector(".user-posts-link");
     if (postsBtn) {
       postsBtn.addEventListener("click", () => {
-        window.location.href = "/?filter=created";
+        navigate("/home?filter=created");
       });
     }
   }

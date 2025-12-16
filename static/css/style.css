@@ -410,6 +410,10 @@ html.dark-mode .notif-btn:hover {
     background-color: var(--login-hover-bg);
     color: var(--login-hover-text);
 }
+body[data-show-login="1"] .modal-close {
+    display: none;
+  }
+  
 .register-btn {
     background-color: var(--register-bg);
     color: var(--register-text);
@@ -1358,7 +1362,9 @@ html.dark-mode .profile-edit-btn {
     margin-bottom: 1.5rem;
 }
 
-.filter-bar button {
+.filter-bar button ,
+.filter-bar a.btn {
+    text-decoration: none; /* important for <a> */
     padding: 0.5rem 1rem;
     border: none;
     background-color: var(--color-secondary-light);
@@ -1368,7 +1374,8 @@ html.dark-mode .profile-edit-btn {
     transition: background-color 0.2s;
 }
 
-.filter-bar button:hover {
+.filter-bar button:hover,
+.filter-bar a.btn:hover  {
     background-color: var(--color-accent-light);
     transform: scale(1.1);
     border-color: #627B51;
@@ -2004,11 +2011,13 @@ html.dark-mode .comment-form button:hover {
 
 /* Filter bar */
 html.dark-mode .filter-bar button,
+html.dark-mode .filter-bar a.btn,
 html.dark-mode .filter-bar select {
     background-color: var(--primary);
     color: var(--bg);
 }
 html.dark-mode .filter-bar button:hover,
+html.dark-mode .filter-bar a.btn,
 html.dark-mode .filter-bar select:hover {
     background-color: var(--accent);
 }
@@ -2151,7 +2160,22 @@ html.dark-mode .error-404 .back-home:focus {
 }
 
 /* Show it only for anonymous users */
-.force-black #authBackdrop {
-    display: block;
+body[data-show-login="1"] #authBackdrop { display:block; }
+
+/* when anonymous (showLogin=1): show login/register, hide logout */
+body[data-show-login="1"] #loginBtn,
+body[data-show-login="1"] #registerBtn {
+  display: inline-flex;
+}
+body[data-show-login="1"] #logoutBtn {
+  display: none;
 }
 
+/* when logged in (showLogin=0): hide login/register, show logout */
+body[data-show-login="0"] #loginBtn,
+body[data-show-login="0"] #registerBtn {
+  display: none;
+}
+body[data-show-login="0"] #logoutBtn {
+  display: inline-flex;
+}

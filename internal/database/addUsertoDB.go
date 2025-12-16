@@ -20,8 +20,8 @@ func AddUserToDb(username, email, hashedPassword, status string) error {
 	return nil
 }
 
-func ChangeUserDataFromDb(oldUsername, newUsername, newbio, newavatar string) error {
-	stmt := `UPDATE users SET username = ?, bio = ?, avatar = ? WHERE username = ?`
+func ChangeUserDataFromDb(oldUsername int, newUsername, newbio, newavatar string) error {
+	stmt := `UPDATE users SET username = ?, bio = ?, avatar = ? WHERE id = ?	`
 	_, err := DB.Exec(stmt, newUsername, newbio, newavatar, oldUsername)
 	return err
 }

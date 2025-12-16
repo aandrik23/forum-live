@@ -2,16 +2,6 @@ package database
 
 import "database/sql"
 
-// func InsertMockReaction(targetType string, targetID int, isLike bool) error {
-// 	_, err := DB.Exec(`
-//  		INSERT INTO likes (user_id, target_type, target_id, is_like)
-//  		VALUES (?, ?, ?, ?)
-// 		ON CONFLICT(user_id, target_type, target_id)
-// 		DO UPDATE SET is_like = excluded.is_like
-// 		`, 0, targetType, targetID, isLike) // MOCK user_id=0 for now
-// 	return err
-// }
-
 func InsertorUpdateReaction(userID int, targetType string, targetID int, isLike bool) error {
 	var existing bool
 	err := DB.QueryRow(`

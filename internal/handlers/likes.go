@@ -82,7 +82,13 @@ func LikesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	numcomments, err := database.CountComments(targetID) //test
+	numcomments := 0
+	if targetType == "post" {
+		n, err := database.CountComments(targetID)
+		if err == nil {
+			numcomments = n
+		}
+	}
 
 	// Return JSON response with updated info
 	w.Header().Set("Content-Type", "application/json")

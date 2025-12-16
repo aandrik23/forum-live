@@ -1,218 +1,156 @@
-import {redirectIfError, getCookie, openModal, isAnonymous} from "./utils.js";
+import {getCookie, openModal, isAnonymous} from "./utils.js";
 import { registerModal } from "./auth.js";
-
+import { escapeHtml, formatGoDate } from "./render.js";
 //NEW COMMENT
+let commentsBound = false;
+
 export function initCommentForm() {
-    if (isAnonymous()) return;
-    document.querySelectorAll('.comment-form').forEach(form => {
-        form.addEventListener('submit', async e => {
-            e.preventDefault();
+  if (isAnonymous()) return;
+  if (commentsBound) return;
+  commentsBound = true;
 
-            const postId = form.getAttribute('data-post-id');
+  document.addEventListener("submit", async (e) => {
+    const form = e.target.closest(".comment-form");
+    if (!form) return;
 
-            const textarea = form.querySelector('textarea');
-            const content = textarea.value.trim();
-            const csrfToken = getCookie('csrf_token');
+    e.preventDefault();
 
-            if (!content) return;
+    const postId = Number(form.dataset.postId);
+    const textarea = form.querySelector("textarea");
+    const content = textarea?.value.trim();
+    const csrfToken = getCookie("csrf_token");
+    if (!postId || !content) return;
 
-            console.log('Sending comment:', { post_id: parseInt(postId), content });
+    const list =
+      form.closest(".comments-section")?.querySelector(".comments-list") ||
+      document.getElementById("previewCommentsList"); // for preview modal
+    if (!list) return;
 
+    // 1) optimistic comment
+    const tempId = `tmp-${Date.now()}`;
+    const optimistic = document.createElement("div");
+    optimistic.className = "comment";
+    optimistic.dataset.tempId = tempId;
+    optimistic.innerHTML = `
+      <p><strong>You</strong>: ${escapeHtml(content)}</p>
+      <p class="meta">sending...</p>
+      <div class="actions">
+        <button data-post-id="0" data-target-type="comment" class="like-btn" data-clicked="false" disabled>
+          <span class="count">0</span>
+        </button>
+        <button data-post-id="0" data-target-type="comment" class="dislike-btn" data-clicked="false" disabled>
+          <span class="count">0</span>
+        </button>
+      </div>
+    `;
+    list.appendChild(optimistic);
 
-            try {
-                const response = await fetch('/posts/comments', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrfToken
-                    },
-                    body: JSON.stringify({ post_id: parseInt(postId), content })
-                });
+    // clear textbox immediately
+    textarea.value = "";
 
-                redirectIfError();
-                if (response.status == 403) {
-                    openModal(registerModal);
-                }
-                if (response.ok) {
-                    //  Add comment
-                    const newComment = document.createElement('div');
-                    newComment.classList.add('comment');
-                    newComment.innerHTML = `
-                        <p><strong>You</strong>: ${content}</p>
-                        <p class="meta">just now</p>
-                        <div class="actions">
-                            <button data-post-id="new" data-target-type="comment" class="like-btn" data-clicked="false">
-                                <span class="count">0</span>
-                            </button>
-                            <button data-post-id="new" data-target-type="comment" class="dislike-btn" data-clicked="false">
-                                <span class="count">0</span>
-                            </button>
-                        </div>
-                    `;
-                    form.previousElementSibling.appendChild(newComment);
-                    initLikeButtons();
-
-
-                    // 2. Clear textarea
-                    textarea.value = '';
-
-                    // 3. Increment comment count in the toggle button
-                    const commentBtn = document.querySelector(`.comment-toggle-btn[data-post-id="${postId}"] .count`);
-                    if (commentBtn) {
-                        const currentCount = parseInt(commentBtn.textContent, 10) || 0;
-                        commentBtn.textContent = currentCount + 1;
-                    }
-                } else {
-                    const err = await response.text();
-                    console.error('Failed to post comment:', err);
-                }
-            } catch (err) {
-                console.error('Network error:', err);
-            }
-
-            const previewForm = document.getElementById('previewCommentForm');
-            if (previewForm) {
-              previewForm.addEventListener('submit', async e => {
-                e.preventDefault();
-
-                const postId = previewForm.dataset.postId;
-                const textarea = previewForm.querySelector('textarea');
-                const content = textarea.value.trim();
-                const csrfToken = getCookie('csrf_token');
-
-                if (!content) return;
-
-                try {
-                  const response = await fetch('/posts/comments', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'X-CSRF-Token': csrfToken
-                    },
-                    body: JSON.stringify({ post_id: parseInt(postId), content })
-                  });
-
-                  if (response.status === 403) {
-                    openModal(registerModal);
-                    return;
-                  }
-
-                  if (response.ok) {
-                    const newComment = document.createElement('div');
-                    newComment.classList.add('comment');
-                    newComment.innerHTML = `
-                      <p><strong>You</strong>: ${content}</p>
-                      <p class="meta">just now</p>
-                      <div class="actions">
-                        <button data-post-id="new" data-target-type="comment" class="like-btn" data-clicked="false">
-                          <span class="count">0</span>
-                        </button>
-                        <button data-post-id="new" data-target-type="comment" class="dislike-btn" data-clicked="false">
-                          <span class="count">0</span>
-                        </button>
-                      </div>
-                    `;
-                    document.getElementById('previewCommentsList').appendChild(newComment);
-                    textarea.value = '';
-                    initLikeButtons();
-                  } else {
-                    console.error('Error saving comment:', await response.text());
-                  }
-                } catch (err) {
-                  console.error('Network error:', err);
-                }
-              });
-            }
-
-
-
-        });
+    // optimistic count bump (only for home feed cards where toggle exists)
+    document.querySelectorAll(
+      `.comment-toggle-btn[data-post-id="${postId}"] .count`
+    ).forEach(span => {
+      span.textContent = (Number(span.textContent) || 0) + 1;
     });
+
+    try {
+      const res = await fetch("/api/posts/comments", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({ post_id: postId, content }),
+      });
+
+      if (res.status === 403) {
+        openModal(registerModal);
+        throw new Error("forbidden");
+      }
+      if (!res.ok) throw new Error(await res.text());
+
+      const saved = await res.json(); // {id, author, content, created_at, likes, dislikes}
+
+      // 3) upgrade optimistic -> real
+      optimistic.querySelector(".meta").textContent = formatGoDate(saved.created_at);
+
+      const likeBtn = optimistic.querySelector(".like-btn");
+      const dislikeBtn = optimistic.querySelector(".dislike-btn");
+
+      likeBtn.dataset.postId = saved.id;
+      dislikeBtn.dataset.postId = saved.id;
+      likeBtn.disabled = false;
+      dislikeBtn.disabled = false;
+    } catch (err) {
+      console.error("Failed to post comment:", err);
+
+      // rollback optimistic UI
+      optimistic.remove();
+    }
+  });
 }
 
 
+
+let reactionsBound = false;
+
 export function initLikeButtons() {
   if (isAnonymous()) return;
+  if (reactionsBound) return;
+  reactionsBound = true;
 
-  document.querySelectorAll('.like-btn, .dislike-btn').forEach(button => {
-    button.addEventListener('click', async () => {
+  document.addEventListener("click", async (e) => {
+    const button = e.target.closest(".like-btn, .dislike-btn");
+    if (!button) return;
 
-      const targetId   = button.dataset.postId;
-      const targetType = button.dataset.targetType; // "post" or "comment"
-      const action     = button.classList.contains('like-btn') ? 'like' : 'dislike';
-      const csrfToken  = getCookie('csrf_token');
+    const targetId = Number(button.dataset.postId);
+    const targetType = button.dataset.targetType;
+    if (!targetId || !targetType) return;
 
-      try {
-        const res = await fetch('/posts/react', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken
-          },
-          body: JSON.stringify({
-            target_type: targetType,
-            target_id: parseInt(targetId),
-            action
-          })
-        });
+    const action = button.classList.contains("like-btn") ? "like" : "dislike";
+    const csrfToken = getCookie("csrf_token");
 
-        redirectIfError();
-        if (res.status == 403) {
-          openModal(registerModal);
-        }
+    try {
+      const res = await fetch("/api/posts/react", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({ target_type: targetType, target_id: targetId, action }),
+      });
 
-        if (res.ok) {
-          const data = await res.json(); // { likes, dislikes, numcomments, user_reaction }
-
-          // Find buttons by postId and targetType
-          const likeBtn = document.querySelector(
-            `button.like-btn[data-post-id="${targetId}"][data-target-type="${targetType}"]`
-          );
-          const dislikeBtn = document.querySelector(
-            `button.dislike-btn[data-post-id="${targetId}"][data-target-type="${targetType}"]`
-          );
-          const commentBtn = document.querySelector(
-            `button.comment-toggle-btn[data-post-id="${targetId}"]`
-          );
-
-          // If we can't find the main buttons, just bail safely
-          if (!likeBtn || !dislikeBtn) {
-            console.warn('Reaction buttons not found for', { targetId, targetType });
-            return;
-          }
-
-          // Update like/dislike counts
-          const likeCountSpan = likeBtn.querySelector('.count');
-          const dislikeCountSpan = dislikeBtn.querySelector('.count');
-
-          if (likeCountSpan) likeCountSpan.textContent = data.likes;
-          if (dislikeCountSpan) dislikeCountSpan.textContent = data.dislikes;
-
-          // Only update comment count if a toggle exists (for posts, not comments)
-          if (commentBtn) {
-            const commentCountSpan = commentBtn.querySelector('.count');
-            if (commentCountSpan) {
-              commentCountSpan.textContent = data.numcomments;
-            }
-          }
-
-          // Update clicked state
-          if (data.user_reaction === 'like') {
-            likeBtn.setAttribute('data-clicked', 'true');
-            dislikeBtn.setAttribute('data-clicked', 'false');
-          } else if (data.user_reaction === 'dislike') {
-            likeBtn.setAttribute('data-clicked', 'false');
-            dislikeBtn.setAttribute('data-clicked', 'true');
-          } else {
-            likeBtn.setAttribute('data-clicked', 'false');
-            dislikeBtn.setAttribute('data-clicked', 'false');
-          }
-        } else {
-          console.error("Reaction failed:", await res.text());
-        }
-      } catch (err) {
-        console.error("Network error:", err);
+      if (res.status === 403) {
+        openModal(registerModal);
+        return;
       }
-    });
+      if (!res.ok) {
+        console.error("Reaction failed:", await res.text());
+        return;
+      }
+
+      const data = await res.json();
+
+      // Update ONLY inside the same comment/post container (avoid querySelector picking the first match)
+      const container = button.closest(".comment, .post-card");
+      if (!container) return;
+
+      const likeBtn = container.querySelector(`.like-btn[data-target-type="${targetType}"]`);
+      const dislikeBtn = container.querySelector(`.dislike-btn[data-target-type="${targetType}"]`);
+
+      likeBtn?.querySelector(".count") && (likeBtn.querySelector(".count").textContent = data.likes);
+      dislikeBtn?.querySelector(".count") && (dislikeBtn.querySelector(".count").textContent = data.dislikes);
+
+      if (data.user_reaction === "like") {
+        likeBtn?.setAttribute("data-clicked", "true");
+        dislikeBtn?.setAttribute("data-clicked", "false");
+      } else if (data.user_reaction === "dislike") {
+        likeBtn?.setAttribute("data-clicked", "false");
+        dislikeBtn?.setAttribute("data-clicked", "true");
+      } else {
+        likeBtn?.setAttribute("data-clicked", "false");
+        dislikeBtn?.setAttribute("data-clicked", "false");
+      }
+    } catch (err) {
+      console.error("Network error:", err);
+    }
   });
 }

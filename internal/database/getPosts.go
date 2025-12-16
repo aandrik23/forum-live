@@ -5,6 +5,57 @@ import (
 	"forum/internal/models"
 )
 
+func GetPostByID(postID int) (models.Post, error) {
+	var post models.Post
+
+	// base post + author username
+	err := DB.QueryRow(`
+		SELECT p.id, p.user_id, p.title, p.content, p.created_at, u.username
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		WHERE p.id = ?
+	`, postID).Scan(&post.ID, &post.AuthorID, &post.Title, &post.Content, &post.CreatedAt, &post.Author)
+	if err != nil {
+		return models.Post{}, err
+	}
+
+	// snippet (optional)
+	if len(post.Content) > 100 {
+		post.Snippet = post.Content[:100] + "..."
+	} else {
+		post.Snippet = post.Content
+	}
+
+	// categories
+	cats, err := GetCategoriesByPostID(post.ID)
+	if err != nil {
+		return models.Post{}, err
+	}
+	post.Categories = cats
+
+	// likes/dislikes (same approach you use elsewhere)
+	err = DB.QueryRow(`
+		SELECT 
+			COUNT(CASE WHEN is_like THEN 1 END) AS likes,
+			COUNT(CASE WHEN NOT is_like THEN 1 END) AS dislikes
+		FROM likes
+		WHERE target_type = 'post' AND target_id = ?
+	`, post.ID).Scan(&post.Likes, &post.Dislikes)
+	if err != nil {
+		return models.Post{}, err
+	}
+
+	// comments
+	comments, err := GetCommentsForPost(post.ID)
+	if err != nil {
+		return models.Post{}, err
+	}
+	post.Comments = comments
+	post.NumComments = len(comments)
+
+	return post, nil
+}
+
 func GetPostsByAuthorID(authorID int) ([]models.Post, error) {
 	rows, err := DB.Query(`
 		SELECT p.id, p.user_id, p.title, p.content, p.created_at, u.username
@@ -267,4 +318,47 @@ func GetPostsByCategoryID(categoryID int) ([]models.Post, error) {
 	}
 
 	return posts, nil
+}
+
+func InsertPostWithCategories(post models.Post) (int, error) {
+	tx, err := DB.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`
+		INSERT INTO posts (user_id, title, content, created_at)
+		VALUES (?, ?, ?, ?)`,
+		post.AuthorID, post.Title, post.Content, post.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	postID, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	for _, category := range post.Categories {
+		_, err = tx.Exec(
+			"INSERT INTO post_categories (post_id, category_id) VALUES (?, ?)",
+			postID, category.ID,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to link post to category ID %d: %w", category.ID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int(postID), nil
+}
+
+func DeletePost(postID int) error {
+	stmt := `DELETE FROM posts WHERE id = ?`
+	_, err := DB.Exec(stmt, postID)
+	return err
 }

@@ -1,4 +1,5 @@
 import { openModal, closeModal, AVATAR_SEEDS, isAnonymous, getCookie } from "./utils.js";
+import { navigate } from "./router.js";
 
 // Profile modal
 export function initProfileModal() {
@@ -97,7 +98,9 @@ export function initProfileModal() {
     .forEach(btn => btn.addEventListener('click', () => closeModal(avatarSelectModal)));
 
   // -------------------- SAVE CHANGES (SPA-style) --------------------
-  document.getElementById('editProfileForm').addEventListener('submit', async e => {
+    const form = document.getElementById('editProfileForm');
+    if (!form) return;
+    form.addEventListener('submit', async e => {
     e.preventDefault();
     console.log("Submitting profile form...");
 
@@ -107,8 +110,9 @@ export function initProfileModal() {
 
     try {
       const csrfToken = getCookie('csrf_token');
-      const res = await fetch('/profile/update', {
+      const res = await fetch('/api/profile/update', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken
@@ -116,22 +120,31 @@ export function initProfileModal() {
         body: JSON.stringify({ username: name, bio, avatarSeed })
       });
 
+      const errorEl = form.querySelector(".form-error");
+      if (errorEl) errorEl.textContent = "";
+      
       if (!res.ok) {
-        console.error("Update failed:", await res.text());
+        const payload = await res.json().catch(() => null);
+        const msg = payload?.error || `Update failed (${res.status})`;
+        if (errorEl) errorEl.textContent = msg;
         return;
       }
+      if (errorEl) errorEl.textContent = "";
 
       //  No full reload: update the page DOM directly
+      const out = await res.json().catch(() => null);
+      if (!out) return;
+      
       const usernameEl = document.querySelector('.profile-username');
       const bioEl      = document.querySelector('.profile-bio');
       const avatarEl   = document.querySelector('.profile-avatar img');
-
-      if (usernameEl) usernameEl.textContent = ` ${name}`; // keep spacing as in template
-      if (bioEl)      bioEl.textContent      = bio || '';
+      
+      if (usernameEl) usernameEl.textContent = ` ${out.username}`;
+      if (bioEl) bioEl.textContent = out.bio || '';
       if (avatarEl) {
-        avatarEl.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(avatarSeed || 'default')}`;
+        avatarEl.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(out.avatarSeed || 'default')}`;
       }
-
+      
       closeModal(editModal);
 
     } catch (err) {
@@ -139,3 +152,54 @@ export function initProfileModal() {
     }
   });
 }
+
+export function initProfileLikesRedirect() {
+  const btn = document.querySelector('.user-likes-link');
+  if (!btn) return;
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const isAnon = document.body.dataset.showLogin === "1";
+    const path = '/home?filter=liked';
+
+    if (isAnon) {
+      navigate(path)
+    } else {
+      navigate(path);
+      history.pushState({ path }, '', path);
+    }
+  });
+}
+
+export function initProfileDislikesRedirect() {
+  const btn = document.querySelector('.user-dislikes-link');
+  if (!btn) return;
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const path = '/home?filter=disliked';
+    navigate(path);
+
+  });
+}
+
+// ------------------ POPSTATE (Back/Forward) ------------------
+
+export function initProfilePostsRedirect() {
+  const btn = document.querySelector('.user-posts-link');
+  if (!btn) return;
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const isAnon = document.body.dataset.showLogin === "1";
+    const path = '/home?filter=created';
+
+    if (isAnon) {
+      navigate(path);
+    } else {
+      navigate(path);
+      history.pushState({ path }, '', path);
+    }
+  });
+}
+
