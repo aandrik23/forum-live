@@ -63,7 +63,6 @@ export function initRegisterForm() {
 
     const next = sessionStorage.getItem("postLoginPath") || "/home";
     sessionStorage.removeItem("postLoginPath");
-
     history.replaceState({}, "", next);
     await loadPage(next); // or navigate(next) if your navigate doesn't block /home
   });
@@ -138,7 +137,8 @@ export function initLogout() {
     history.replaceState({}, "", "/");
 
     //  Force login modal
-    document.getElementById("loginModal")?.classList.add("open");
+    sessionStorage.setItem("postLoginPath", "/home");
+    openModal(document.getElementById("loginModal"));    
   });
 }
 

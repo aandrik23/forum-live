@@ -22,25 +22,22 @@ func writeAPIUnauthorized(w http.ResponseWriter) {
 	})
 }
 
-// this is for better experience when tokens are expire or cant refresh , we issue anon token and redirect user to home page
+// only to actively reset the session (expired refresh, revoked token, invalid signature). , we issue anon token and redirect user to home page
 func redirectToHomeAsAnon(w http.ResponseWriter, r *http.Request) {
+	isAPI := strings.HasPrefix(r.URL.Path, "/api/") ||
+		strings.Contains(r.Header.Get("Accept"), "application/json") ||
+		r.Header.Get("X-Requested-With") == "XMLHttpRequest"
+
+	// API/fetch requests: do NOT rotate/expire cookies here — just deny
+	if isAPI {
+		writeAPIUnauthorized(w)
+		return
+	}
+
+	// Browser navigation: reset session + issue anon + redirect
 	ExpireTokens(w, r)
 	uuid := utils.GenerateUUID()
 	createAnonymousToken(w, uuid)
-
-	// If this is an API/fetch request, return 401 JSON instead of redirecting HTML
-	wantsJSON := strings.Contains(r.Header.Get("Accept"), "application/json") ||
-		r.Header.Get("X-Requested-With") == "XMLHttpRequest" ||
-		strings.HasPrefix(r.URL.Path, "/api/")
-
-	if wantsJSON {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"error": "unauthorized",
-		})
-		return
-	}
 
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
@@ -49,6 +46,8 @@ func safeLogWithRequest(r *http.Request, msg string, payload *JWTPayload, level 
 	meta := fmt.Sprintf(" | Method:%s | IP:%s", r.Method, r.RemoteAddr)
 	if payload != nil {
 		msg += " UUID:" + payload.UUID
+	} else {
+		msg += " UUID: ''"
 	}
 	logger.Log(msg+meta, level)
 }
@@ -57,9 +56,37 @@ func safeLogWithRequest(r *http.Request, msg string, payload *JWTPayload, level 
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		//  Block any access if session was killed
+		// HARD BLOCK: if session was killed, force logout/anon and block refresh
 		if logoutCookie, err := r.Cookie("session_killed"); err == nil && logoutCookie.Value == "true" {
+
+			// Expire auth/refresh/csrf (no re-setting session_killed)
+			expireAccessToken(w)
+			expireRefreshToken(w)
+			expireCsrfToken(w)
+
+			// Clear the latch so it doesn't extend itself
 			expireSessionKilledToken(w)
+
+			// (Optional) also revoke DB refresh/access if refresh cookie exists:
+			if refreshCookie, err := r.Cookie("refresh_token"); err == nil && refreshCookie.Value != "" {
+				if p, err := VerifyJWT(refreshCookie.Value, TokenTypeRefresh); err == nil {
+					_ = database.DeleteToken(p.JTI)
+					if p.AccessJTI != "" {
+						_ = database.DeleteToken(p.AccessJTI)
+					}
+				}
+			}
+
+			uuid := utils.GenerateUUID()
+			createAnonymousToken(w, uuid)
+
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				writeAPIUnauthorized(w)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+			return
 		}
 
 		//  Get the auth_token
@@ -70,6 +97,12 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			// allow auth endpoints without cookie
 			if r.URL.Path == "/api/login" || r.URL.Path == "/api/register" {
 				next.ServeHTTP(w, r)
+				return
+			}
+
+			// API calls without token: just 401 (do NOT issue anon)
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				writeAPIUnauthorized(w)
 				return
 			}
 

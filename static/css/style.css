@@ -602,10 +602,12 @@ html.dark-mode .logout-btn:focus {
     transform: translateX(-100%);
     transition: transform 0.3s ease;
 }
+
 .sidebar.collapsed ~ .sidebar-toggle {
     left: 0;
     background-image: url("/static/img/arrow-right.png");
 }
+
 .container.content {
     margin-left: 90px;
     margin-top: 64px;
