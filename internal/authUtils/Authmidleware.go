@@ -55,38 +55,8 @@ func safeLogWithRequest(r *http.Request, msg string, payload *JWTPayload, level 
 // this is for first time visitors
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
-		// HARD BLOCK: if session was killed, force logout/anon and block refresh
 		if logoutCookie, err := r.Cookie("session_killed"); err == nil && logoutCookie.Value == "true" {
-
-			// Expire auth/refresh/csrf (no re-setting session_killed)
-			expireAccessToken(w)
-			expireRefreshToken(w)
-			expireCsrfToken(w)
-
-			// Clear the latch so it doesn't extend itself
 			expireSessionKilledToken(w)
-
-			// (Optional) also revoke DB refresh/access if refresh cookie exists:
-			if refreshCookie, err := r.Cookie("refresh_token"); err == nil && refreshCookie.Value != "" {
-				if p, err := VerifyJWT(refreshCookie.Value, TokenTypeRefresh); err == nil {
-					_ = database.DeleteToken(p.JTI)
-					if p.AccessJTI != "" {
-						_ = database.DeleteToken(p.AccessJTI)
-					}
-				}
-			}
-
-			uuid := utils.GenerateUUID()
-			createAnonymousToken(w, uuid)
-
-			if strings.HasPrefix(r.URL.Path, "/api/") {
-				writeAPIUnauthorized(w)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-			return
 		}
 
 		//  Get the auth_token
