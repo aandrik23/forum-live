@@ -14,13 +14,37 @@ import (
 	"time"
 )
 
+func writeAPIUnauthorized(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error": "unauthorized",
+	})
+}
+
 // this is for better experience when tokens are expire or cant refresh , we issue anon token and redirect user to home page
 func redirectToHomeAsAnon(w http.ResponseWriter, r *http.Request) {
 	ExpireTokens(w, r)
 	uuid := utils.GenerateUUID()
 	createAnonymousToken(w, uuid)
+
+	// If this is an API/fetch request, return 401 JSON instead of redirecting HTML
+	wantsJSON := strings.Contains(r.Header.Get("Accept"), "application/json") ||
+		r.Header.Get("X-Requested-With") == "XMLHttpRequest" ||
+		strings.HasPrefix(r.URL.Path, "/api/")
+
+	if wantsJSON {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": "unauthorized",
+		})
+		return
+	}
+
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
+
 func safeLogWithRequest(r *http.Request, msg string, payload *JWTPayload, level logger.LogLevel) {
 	meta := fmt.Sprintf(" | Method:%s | IP:%s", r.Method, r.RemoteAddr)
 	if payload != nil {
@@ -42,17 +66,19 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		cookie, err := r.Cookie("auth_token")
 
 		if err != nil || cookie.Value == "" {
-			// Only allow anonymous token on public routes
-			if r.URL.Path == "/register" || r.URL.Path == "/login" || r.URL.Path == "/" || r.URL.Path == "/home" {
-				uuid := utils.GenerateUUID()
-				createAnonymousToken(w, uuid)
-				logger.Log(fmt.Sprint("New JWT issued for anonymous user:", uuid), logger.InfoLevel)
+
+			// allow auth endpoints without cookie
+			if r.URL.Path == "/api/login" || r.URL.Path == "/api/register" {
 				next.ServeHTTP(w, r)
 				return
-			} else {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
 			}
+
+			// // shell route (SPA deep links included) -> issue anon and allow
+			uuid := utils.GenerateUUID()
+			createAnonymousToken(w, uuid)
+			next.ServeHTTP(w, r)
+			return
+
 		}
 
 		//  Validate JWT
@@ -62,9 +88,11 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 				// make sure we dont check refresh tokens for anonymous we just send a new anon token
 				if anonPayload := checkForAnonymousPayload(cookie.Value); anonPayload != nil {
 					ctx := context.WithValue(r.Context(), "jwtPayload", anonPayload)
+
 					uuid := utils.GenerateUUID()
 					createAnonymousToken(w, uuid)
 					logger.Log(fmt.Sprint("Expired Anonymous Token. NEW JWT issued for anonymous user new uuid:", uuid), logger.InfoLevel)
+
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
@@ -73,6 +101,8 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 				if err != nil || refreshCookie.Value == "" {
 					msg := "Missing refresh token"
 					safeLogWithRequest(r, msg, payload, logger.ErrorLevel)
+
+					// force anon experience
 					redirectToHomeAsAnon(w, r)
 					return
 				}
@@ -118,6 +148,17 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		logger.Log(fmt.Sprint("Verified token UUID:", payload.UUID, "| Role:", payload.Role), logger.InfoLevel)
+
+		//  SPA RULE: anonymous token is allowed for shell only, NOT for API data
+		if payload.Role == RoleAnonymous && strings.HasPrefix(r.URL.Path, "/api/") {
+			switch r.URL.Path {
+			case "/api/login", "/api/register", "/api/logout":
+				// allow
+			default:
+				writeAPIUnauthorized(w)
+				return
+			}
+		}
 
 		ctx := context.WithValue(r.Context(), "jwtPayload", payload)
 		r = r.WithContext(ctx)
@@ -235,9 +276,24 @@ func RequireRoleMiddleware(allowedRoles ...string) func(http.HandlerFunc) http.H
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			payload, ok := r.Context().Value("jwtPayload").(*JWTPayload)
+
+			wantsJSON := strings.HasPrefix(r.URL.Path, "/api/") ||
+				strings.Contains(r.Header.Get("Accept"), "application/json") ||
+				r.Header.Get("X-Requested-With") == "XMLHttpRequest"
+
 			if !ok || payload == nil {
 				msg := "Unauthorized"
 				safeLogWithRequest(r, msg, payload, logger.ErrorLevel)
+
+				if wantsJSON {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					_ = json.NewEncoder(w).Encode(map[string]string{
+						"error": "unauthorized",
+					})
+					return
+				}
+
 				http.Redirect(w, r, "/?show=register", http.StatusSeeOther)
 				return
 			}
@@ -245,11 +301,25 @@ func RequireRoleMiddleware(allowedRoles ...string) func(http.HandlerFunc) http.H
 			if _, ok := roleSet[payload.Role]; !ok {
 				msg := "Forbidden: insufficient role"
 				safeLogWithRequest(r, msg, payload, logger.ErrorLevel)
+
+				if wantsJSON {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					_ = json.NewEncoder(w).Encode(map[string]string{
+						"error": "forbidden",
+					})
+					return
+				}
+
 				http.Redirect(w, r, "/?show=register", http.StatusSeeOther)
 				return
 			}
 
-			safeLogWithRequest(r, fmt.Sprintf("Access granted: Role: %s", payload.Role), payload, logger.InfoLevel)
+			safeLogWithRequest(r,
+				fmt.Sprintf("Access granted: Role: %s", payload.Role),
+				payload,
+				logger.InfoLevel,
+			)
 			next.ServeHTTP(w, r)
 		}
 	}

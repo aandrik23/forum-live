@@ -42,3 +42,4 @@ export function syncTheme() {
     if (toggle) toggle.checked = isDark;
   }
   
+  

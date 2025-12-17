@@ -5,7 +5,7 @@ import { initFilterModal } from "./navigation.js";
 import { getCookie } from "./utils.js";
 import { renderProfileFromJSON } from "./renderProfile.js"; // new file (recommended)
 import { navigate } from "./router.js";
-import { fillCsrfInputs } from "./utils.js";
+import { fillCsrfInputs, openModal } from "./utils.js";
 import { setAuthState, isLoggedIn } from "./auth.js";
 import { initLikeButtons, initCommentForm } from "./comments.js";
 let isLoading = false;
@@ -14,6 +14,16 @@ window.addEventListener('popstate', () => {
   const path = window.location.pathname + window.location.search;
   loadPage(path);
 });
+
+function handle401(nextPath) {
+  setAuthState(false);
+  sessionStorage.setItem("postLoginPath", nextPath);
+
+  const root = document.getElementById("app-root");
+  if (root) root.innerHTML = "";
+
+  openModal(document.getElementById("loginModal"));
+}
 
 async function loadHomeAPI(path) {
     
@@ -29,11 +39,16 @@ async function loadHomeAPI(path) {
     const res = await fetch(url.toString(), {
       method: "GET",
       credentials: "include",
-      headers: { "Accept": "application/json" },
+      headers: { Accept: "application/json" },
     });
-  
+    
+    if (res.status === 401) {
+      handle401(path);
+      return;
+    }
+    
     if (!res.ok) throw new Error(`Home API failed: ${res.status}`);
-  
+    
     const data = await res.json();
     setAuthState(!!data.user);
     renderNavbarCategories(data.categories);
@@ -127,6 +142,11 @@ async function loadCreatePostAPI() {
       headers: { "Accept": "application/json" },
     });
   
+    if (res.status === 401) {
+      handle401("/posts/new");
+      return;
+    }
+    
     if (!res.ok) throw new Error(`Create init API failed: ${res.status}`);
   
     const data = await res.json();
@@ -207,13 +227,11 @@ async function loadPostAPI(id) {
       headers: { Accept: "application/json" },
     });
   
-    if (!res.ok) throw new Error(`Post API failed: ${res.status}`);
     if (res.status === 401) {
-      setAuthState(false);
-      sessionStorage.setItem("postLoginPath", `/post/${id}`);
-      document.getElementById("loginModal")?.classList.add("open");
+      handle401(`/post/${id}`);
       return;
     }
+    if (!res.ok) throw new Error(`Post API failed: ${res.status}`);
     
     const data = await res.json();
     setAuthState(true);
@@ -226,7 +244,7 @@ async function loadPostAPI(id) {
     initPageContent();
   }
   
-  async function loadProfileAPI() {
+async function loadProfileAPI() {
     const res = await fetch("/api/profile", {
       method: "GET",
       credentials: "include",
@@ -234,14 +252,9 @@ async function loadPostAPI(id) {
     });
   
     if (res.status === 401) {
-      setAuthState(false);
-      sessionStorage.setItem("postLoginPath", "/profile");
-      document.getElementById("loginModal")?.classList.add("open");
-      // optional: render something in app-root instead of blank
-      const appRoot = document.getElementById("app-root");
-      if (appRoot) appRoot.innerHTML = `<p>Please log in to view your profile.</p>`;
+      handle401("/profile");
       return;
-    }
+    }    
   
     if (!res.ok) throw new Error(`Profile API failed: ${res.status}`);
   
