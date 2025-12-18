@@ -14,6 +14,48 @@ import (
 	"time"
 )
 
+// =========================
+// AuthMiddleware
+// =========================
+
+func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		clearSessionKilledIfPresent(w, r)
+
+		// 1) Grab auth cookie
+		tok, ok := getCookieValue(r, "auth_token")
+		if !ok {
+			if handledNoAccessCookie(w, r, next) {
+				return
+			}
+			// handledNoAccessCookie should always return true, but keep defensive
+			return
+		}
+
+		// 2) Validate/refresh access token and attach payload
+		payload, r2, ok := authenticateRequest(w, r, tok)
+		if !ok {
+			return // authenticateRequest already responded (401/redirect)
+		}
+
+		// 3) Enforce DB JTI
+		if !checkAccessJTI(w, r2, payload) {
+			return
+		}
+
+		// 4) SPA rule: anon token can’t access API data
+		if !enforceAnonAPIRule(w, r2, payload) {
+			return
+		}
+
+		next.ServeHTTP(w, r2)
+	}
+}
+
+// =========================
+// helpers (private)
+// =========================
 func writeAPIUnauthorized(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
@@ -52,121 +94,128 @@ func safeLogWithRequest(r *http.Request, msg string, payload *JWTPayload, level 
 	logger.Log(msg+meta, level)
 }
 
-// this is for first time visitors
-func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if logoutCookie, err := r.Cookie("session_killed"); err == nil && logoutCookie.Value == "true" {
-			expireSessionKilledToken(w)
-		}
+func clearSessionKilledIfPresent(w http.ResponseWriter, r *http.Request) {
+	if ck, err := r.Cookie("session_killed"); err == nil && ck.Value == "true" {
+		expireSessionKilledToken(w)
+	}
+}
 
-		//  Get the auth_token
-		cookie, err := r.Cookie("auth_token")
+func getCookieValue(r *http.Request, name string) (string, bool) {
+	c, err := r.Cookie(name)
+	if err != nil || c.Value == "" {
+		return "", false
+	}
+	return c.Value, true
+}
 
-		if err != nil || cookie.Value == "" {
+// returns true if request was fully handled (response written)
+func handledNoAccessCookie(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) bool {
+	// allow auth endpoints without cookie
+	if r.URL.Path == "/api/login" || r.URL.Path == "/api/register" {
+		next.ServeHTTP(w, r)
+		return true
+	}
 
-			// allow auth endpoints without cookie
-			if r.URL.Path == "/api/login" || r.URL.Path == "/api/register" {
-				next.ServeHTTP(w, r)
-				return
-			}
+	// API calls without token: just 401
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		writeAPIUnauthorized(w)
+		return true
+	}
 
-			// API calls without token: just 401 (do NOT issue anon)
-			if strings.HasPrefix(r.URL.Path, "/api/") {
-				writeAPIUnauthorized(w)
-				return
-			}
+	// shell route -> issue anon and allow
+	uuid := utils.GenerateUUID()
+	createAnonymousToken(w, uuid)
+	next.ServeHTTP(w, r)
+	return true
+}
 
-			// // shell route (SPA deep links included) -> issue anon and allow
+// returns payload, updated request with context, ok=true if authenticated
+func authenticateRequest(w http.ResponseWriter, r *http.Request, accessToken string) (*JWTPayload, *http.Request, bool) {
+	payload, err := VerifyJWT(accessToken, TokenTypeAccess)
+	if err == nil {
+		ctx := context.WithValue(r.Context(), "jwtPayload", payload)
+		r2 := r.WithContext(ctx)
+		logger.Log(fmt.Sprint("Verified token UUID:", payload.UUID, "| Role:", payload.Role), logger.InfoLevel)
+		return payload, r2, true
+	}
+
+	// expired
+	if errors.Is(err, ErrTokenExpired) {
+		// if expired anon -> mint new anon + continue as anon
+		if anonPayload := checkForAnonymousPayload(accessToken); anonPayload != nil {
+			ctx := context.WithValue(r.Context(), "jwtPayload", anonPayload)
+			r2 := r.WithContext(ctx)
+
 			uuid := utils.GenerateUUID()
 			createAnonymousToken(w, uuid)
-			next.ServeHTTP(w, r)
-			return
+			logger.Log(fmt.Sprint("Expired Anonymous Token. NEW JWT issued for anonymous user new uuid:", uuid), logger.InfoLevel)
 
+			return anonPayload, r2, true
 		}
 
-		//  Validate JWT
-		payload, err := VerifyJWT(cookie.Value, TokenTypeAccess)
+		// try refresh
+		refreshTok, ok := getCookieValue(r, "refresh_token")
+		if !ok {
+			safeLogWithRequest(r, "Missing refresh token", payload, logger.ErrorLevel)
+			redirectToHomeAsAnon(w, r)
+			return nil, r, false
+		}
+
+		newAccess, err := refreshAccessToken(refreshTok, w, r)
 		if err != nil {
-			if errors.Is(err, ErrTokenExpired) {
-				// make sure we dont check refresh tokens for anonymous we just send a new anon token
-				if anonPayload := checkForAnonymousPayload(cookie.Value); anonPayload != nil {
-					ctx := context.WithValue(r.Context(), "jwtPayload", anonPayload)
-
-					uuid := utils.GenerateUUID()
-					createAnonymousToken(w, uuid)
-					logger.Log(fmt.Sprint("Expired Anonymous Token. NEW JWT issued for anonymous user new uuid:", uuid), logger.InfoLevel)
-
-					next.ServeHTTP(w, r.WithContext(ctx))
-					return
-				}
-				// Try to refresh
-				refreshCookie, err := r.Cookie("refresh_token")
-				if err != nil || refreshCookie.Value == "" {
-					msg := "Missing refresh token"
-					safeLogWithRequest(r, msg, payload, logger.ErrorLevel)
-
-					// force anon experience
-					redirectToHomeAsAnon(w, r)
-					return
-				}
-
-				newAccessToken, err := refreshAccessToken(refreshCookie.Value, w, r)
-				if err != nil {
-					msg := "Session expired"
-					safeLogWithRequest(r, msg, payload, logger.ErrorLevel)
-					redirectToHomeAsAnon(w, r)
-					//http.Error(w, msg, http.StatusUnauthorized)
-					return
-				}
-				payload, err = VerifyJWT(newAccessToken, TokenTypeAccess)
-				if err != nil {
-					msg := "Token refresh failed"
-					safeLogWithRequest(r, msg, payload, logger.ErrorLevel)
-					redirectToHomeAsAnon(w, r)
-					return
-				}
-
-			} else {
-				msg := "Invalid token"
-				safeLogWithRequest(r, msg, payload, logger.ErrorLevel)
-				redirectToHomeAsAnon(w, r)
-				return
-			}
+			safeLogWithRequest(r, "Session expired", payload, logger.ErrorLevel)
+			redirectToHomeAsAnon(w, r)
+			return nil, r, false
 		}
 
-		//  Check if access token's JTI is in the database
-		if payload.JTI != "" {
-			exists, err := database.TokenExists(payload.JTI)
-			if err != nil || !exists {
-				msg := "Access token revoked or invalid"
-				redirectToHomeAsAnon(w, r)
-				// http.Error(w, msg, http.StatusUnauthorized)
-				safeLogWithRequest(r, msg, payload, logger.ErrorLevel)
-				return
-			}
-		} else if payload.Role != RoleAnonymous {
-			// Defensive: only allow missing JTI for anonymous
-			http.Error(w, "Invalid token structure", http.StatusUnauthorized)
-			return
-		}
-
-		logger.Log(fmt.Sprint("Verified token UUID:", payload.UUID, "| Role:", payload.Role), logger.InfoLevel)
-
-		//  SPA RULE: anonymous token is allowed for shell only, NOT for API data
-		if payload.Role == RoleAnonymous && strings.HasPrefix(r.URL.Path, "/api/") {
-			switch r.URL.Path {
-			case "/api/login", "/api/register", "/api/logout":
-				// allow
-			default:
-				writeAPIUnauthorized(w)
-				return
-			}
+		payload, err = VerifyJWT(newAccess, TokenTypeAccess)
+		if err != nil {
+			safeLogWithRequest(r, "Token refresh failed", payload, logger.ErrorLevel)
+			redirectToHomeAsAnon(w, r)
+			return nil, r, false
 		}
 
 		ctx := context.WithValue(r.Context(), "jwtPayload", payload)
-		r = r.WithContext(ctx)
-		next.ServeHTTP(w, r)
+		r2 := r.WithContext(ctx)
+		logger.Log(fmt.Sprint("Verified token UUID:", payload.UUID, "| Role:", payload.Role), logger.InfoLevel)
+		return payload, r2, true
 	}
+
+	// invalid signature/structure/etc
+	safeLogWithRequest(r, "Invalid token", payload, logger.ErrorLevel)
+	redirectToHomeAsAnon(w, r)
+	return nil, r, false
+}
+
+func checkAccessJTI(w http.ResponseWriter, r *http.Request, payload *JWTPayload) bool {
+	if payload.JTI != "" {
+		exists, err := database.TokenExists(payload.JTI)
+		if err != nil || !exists {
+			safeLogWithRequest(r, "Access token revoked or invalid", payload, logger.ErrorLevel)
+			redirectToHomeAsAnon(w, r)
+			return false
+		}
+		return true
+	}
+
+	if payload.Role != RoleAnonymous {
+		http.Error(w, "Invalid token structure", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
+func enforceAnonAPIRule(w http.ResponseWriter, r *http.Request, payload *JWTPayload) bool {
+	if payload.Role == RoleAnonymous && strings.HasPrefix(r.URL.Path, "/api/") {
+		switch r.URL.Path {
+		case "/api/login", "/api/register", "/api/logout":
+			return true
+		default:
+			writeAPIUnauthorized(w)
+			return false
+		}
+	}
+	return true
 }
 
 func checkForAnonymousPayload(token string) *JWTPayload {
