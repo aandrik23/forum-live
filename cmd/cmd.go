@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const address = "192.168.1.110:8000"
+const address = "localhost:8080"
 
 func StartServer() {
 	internal.CheckArguments()
