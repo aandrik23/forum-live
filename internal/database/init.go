@@ -69,6 +69,12 @@ func initializeTables() {
 	if err := execSQLFile(databasePath + "createPost.sql"); err != nil {
 		log.Fatalf("Failed to execute user.sql: %v", err)
 	}
+	if err := execSQLFile(databasePath + "createConversations.sql"); err != nil {
+		log.Fatalf("Failed to execute createConversations.sql: %v", err)
+	}
+	if err := execSQLFile(databasePath + "createMessages.sql"); err != nil {
+		log.Fatalf("Failed to execute createMessages.sql: %v", err)
+	}
 	//seed categories
 	if err := execSQLFile(seedPath + "seedCategories.sql"); err != nil {
 		log.Fatalf("Failed to execute seed.sql: %v", err)

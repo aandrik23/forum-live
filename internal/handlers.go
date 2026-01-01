@@ -48,6 +48,10 @@ func Handlers() {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 	}))
 
+	// ws endopoints
+	mux.HandleFunc("/api/dm/threads", apiProtected(handlers.DMThreadsHandler))
+	mux.HandleFunc("/api/dm/messages", apiProtected(handlers.DMMessagesHandler))
+
 	// 3) auth endpoints (API)
 	mux.HandleFunc("/api/register", handlers.RegisterHandler)
 	mux.HandleFunc("/api/login", handlers.LoginHandler)
@@ -55,6 +59,7 @@ func Handlers() {
 	// (Recommended) make logout API too:
 	mux.HandleFunc("/api/logout", apiAuth(handlers.LogoutHandler))
 
+	mux.HandleFunc("/ws/dm", apiAuth(handlers.DMWebSocketHandler))
 	// 4) SPA shell catch-all (PUBLIC)
 	mux.HandleFunc("/", apiAuth(handlers.SPAShellHandler))
 
