@@ -1,3 +1,4 @@
+// Mock for users list
 const mockUsers = [
   { id: 1, username: "alice", online: true, lastMessageAt: "2025-01-10T14:30:00" },
   { id: 2, username: "bob", online: false, lastMessageAt: null },
@@ -6,6 +7,30 @@ const mockUsers = [
 ];
 
 let activeChatUser = null;
+
+
+// Mock message storage: key = username, value = array of messages (oldest -> newest)
+const mockMessagesByUser = {
+  charlie: [
+    { from: "me", to: "charlie", text: "Hey Charlie!", createdAt: "2025-01-11T09:00:00" },
+    { from: "charlie", to: "me", text: "Hey! What’s up?", createdAt: "2025-01-11T09:01:00" },
+    { from: "me", to: "charlie", text: "Testing the forum chat UI.", createdAt: "2025-01-11T09:02:00" },
+    { from: "charlie", to: "me", text: "Looks good so far", createdAt: "2025-01-11T09:03:00" },
+    { from: "me", to: "charlie", text: "Next we’ll load messages 10 by 10.", createdAt: "2025-01-11T09:04:00" },
+    { from: "charlie", to: "me", text: "Nice!", createdAt: "2025-01-11T09:05:00" },
+    { from: "me", to: "charlie", text: "Also need online/offline sorting.", createdAt: "2025-01-11T09:06:00" },
+    { from: "charlie", to: "me", text: "We did that", createdAt: "2025-01-11T09:07:00" },
+    { from: "me", to: "charlie", text: "Cool, now UI messages.", createdAt: "2025-01-11T09:08:00" },
+    { from: "charlie", to: "me", text: "Let’s go!", createdAt: "2025-01-11T09:09:00" },
+    { from: "me", to: "charlie", text: "This one is message 11 (to test last 10).", createdAt: "2025-01-11T09:10:00" }
+  ],
+  alice: [
+    { from: "alice", to: "me", text: "Hi!", createdAt: "2025-01-10T14:30:00" }
+  ],
+  bob: [],
+  david: []
+};
+
 
 // Create sidebar 
 function createChatSidebar() {
@@ -59,6 +84,53 @@ function renderUsers(users) {
   });
 }
 
+
+// Message helpers
+function formatMessageDate(isoString) {
+  const d = new Date(isoString);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
+function getLastMessages(username, limit = 10) {
+  const all = mockMessagesByUser[username] || [];
+  return all.slice(Math.max(0, all.length - limit)); //last messages
+}
+
+// render messages
+function renderMessages(username) {
+  const container = document.getElementById("chat-messages");
+  const messages = getLastMessages(username, 10)
+
+  container.innerHTML = "";
+
+  if (messages.length === 0) {
+    container.innerHTML = `<p style="opacity:.6">No messages yet</p>`;
+    return;
+  }
+
+  messages.forEach(msg => {
+    const row = document.createElement("div");
+    row.style.marginBottom = "10px";
+    
+    const when = formatMessageDate(msg.createdAt);
+    const sender = msg.from === "me" ? "You" : msg.from;
+
+    row.innerHTML = `
+          <div style="opacity:.7; font-size:12px; margin-bottom:2px;">
+            ${when} • <strong>${sender}</strong>
+          </div>
+          <div style="font-size:14px;">
+            ${msg.text}
+          </div>
+        `;
+
+        container.appendChild(row);
+      });
+
+      container.scrollTop = container.scrollHeight;
+}
+
+
 // Open chat panel
 function openChat(user) {
   activeChatUser = user;
@@ -75,7 +147,7 @@ function openChat(user) {
     </div>
 
     <div id="chat-messages">
-      <p style="opacity:.6">No messages yet</p>
+      <p style="opacity:.6">Loading messages...</p>
     </div>
 
     <div id="chat-input-area">
@@ -85,6 +157,9 @@ function openChat(user) {
   `;
 
   document.body.appendChild(panel);
+
+  //load last 10 messages
+  renderMessages(user.username);
 }
 
 // Init 
