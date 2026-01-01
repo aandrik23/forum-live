@@ -5,18 +5,47 @@ import (
 	"strings"
 )
 
-func AddUserToDb(username, email, hashedPassword, status string) error {
-	stmt := `INSERT INTO users (username, email, password, role, bio, avatar, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-	_, err := DB.Exec(stmt, username, email, hashedPassword, "user", "", "", status)
+func AddUserToDb(
+	username,
+	firstName,
+	lastName,
+	age,
+	gender,
+	email,
+	hashedPassword,
+	status string,
+) error {
+	stmt := `
+		INSERT INTO users
+		(username, first_name, last_name, age, gender, email, password, role, bio, avatar, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := DB.Exec(
+		stmt,
+		username,
+		firstName,
+		lastName,
+		age,
+		gender,
+		email,
+		hashedPassword,
+		"user",
+		"",
+		"",
+		status,
+	)
+
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: users.username") {
 			return errors.New("username already exists")
-		} else if strings.Contains(err.Error(), "UNIQUE constraint failed: users.email") {
+		}
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: users.email") {
 			return errors.New("email already exists")
 		}
 		return err
 	}
+
 	return nil
 }
 

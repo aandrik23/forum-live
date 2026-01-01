@@ -120,8 +120,8 @@
             <h2>Log In</h2> 
 
             <form id="loginForm" action="/api/login" method="POST" class="auth-form">
-                <label for="login-email">Email</label>
-                <input type="email" id="login-email" name="email" required autofocus>
+                <label for="login-identifier">Username or Email</label>
+                <input type="text" id="login-identifier" name="identifier" required autofocus>
 
                 <label for="login-password">Password</label>
                 <input type="password" id="login-password" name="password" required>
@@ -144,18 +144,37 @@
             <h2>Sign Up</h2>
 
             <form id="registerForm" action="/api/register" method="POST" class="auth-form">
-                <label for="reg-email">Email</label>
-                <input type="email" id="reg-email" name="email" required autofocus>
-
                 <label for="reg-username">Username</label>
                 <input type="text" id="reg-username" name="username" required>
-
+                
+                <label for="reg-first-name">First Name</label>
+                <input type="text" id="reg-first-name" name="first_name" required>
+                
+                <label for="reg-last-name">Last Name</label>
+                <input type="text" id="reg-last-name" name="last_name" required>
+                
+                <div class="row">
+                    <label for="reg-age">Age</label>
+                    <input type="number" id="reg-age" name="age" min="1" required>
+                    
+                    <label for="reg-gender">Gender</label>
+                    <select id="reg-gender" name="gender" required>
+                      <option value="">Select</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                </div>
+                
                 <label for="reg-password">Password</label>
                 <input type="password" id="reg-password" name="password" required>
 
                 <label for="reg-password2">Verify Password</label>
                 <input type="password" id="reg-password2" name="password2" required>
 
+                <label for="reg-email">Email</label>
+                <input type="email" id="reg-email" name="email" required>
+                
                 <div class="form-error" style="color:red; margin-bottom:1em"></div>
                 <button type="submit" class="btn pill">Register</button>
             </form>

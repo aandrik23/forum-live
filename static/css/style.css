@@ -94,6 +94,94 @@ html.dark-mode {
 
 }
 
+/* Age + Gender row */
+.auth-form .row {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.auth-form .row > div {
+    flex: 1;
+}
+
+/* Shared height */
+.auth-form input[type="number"],
+.auth-form select {
+    height: 38px;
+    box-sizing: border-box;
+}
+
+/* Age input */
+.auth-form input[type="number"] {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--secondary);
+    padding: 0.6rem 1.6rem 0.6rem 0.75rem; /* space for arrows */
+    border-radius: 6px;
+    appearance: textfield;
+    -moz-appearance: textfield;
+
+    /* Custom arrows */
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--fg) 50%),
+        linear-gradient(135deg, var(--fg) 50%, transparent 50%),
+        linear-gradient(225deg, transparent 50%, var(--fg) 50%),
+        linear-gradient(315deg, var(--fg) 50%, transparent 50%);
+    background-position:
+        calc(100% - 14px) 45%,
+        calc(100% - 9px) 45%,
+        calc(100% - 14px) 60%,
+        calc(100% - 9px) 60%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+}
+
+.auth-form input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Hide native number arrows (WebKit) */
+.auth-form input[type="number"]::-webkit-inner-spin-button,
+.auth-form input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Gender select */
+.auth-form select {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--secondary);
+    padding: 0.6rem 0.75rem;
+    line-height: 1.2;
+    border-radius: 6px;
+    cursor: pointer;
+    appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--fg) 50%),
+        linear-gradient(135deg, var(--fg) 50%, transparent 50%);
+    background-position:
+        calc(100% - 18px) calc(50% - 3px),
+        calc(100% - 13px) calc(50% - 3px);
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+}
+
+.auth-form select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Dark mode consistency */
+html.dark-mode .auth-form input[type="number"],
+html.dark-mode .auth-form select {
+    background: var(--bg);
+    color: var(--fg);
+    border-color: var(--secondary);
+}
+
+/*/////////////////////////////////////////////////////
 /* Container center + padding */
 .container {
     max-width: 1200px;

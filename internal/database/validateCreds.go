@@ -9,13 +9,22 @@ import (
 )
 
 // Check credentials from DB
-func ValidateCredsByEmail(email, password string) (username, role, bio, avatar string, userID int, status string, err error) {
+func ValidateCredsByIdentifier(identifier, password string) (
+	username, role, bio, avatar string,
+	userID int,
+	status string,
+	err error,
+) {
 	var storedHash string
-	email = strings.ToLower(strings.TrimSpace(email))
+
+	identifier = strings.ToLower(strings.TrimSpace(identifier))
 
 	err = DB.QueryRow(`
-		SELECT password, username, role, bio, avatar, id, status FROM users WHERE email = ?
-	`, email).Scan(&storedHash, &username, &role, &bio, &avatar, &userID, &status)
+		SELECT password, username, role, bio, avatar, id, status
+		FROM users
+		WHERE email = ? OR username = ?
+	`, identifier, identifier).
+		Scan(&storedHash, &username, &role, &bio, &avatar, &userID, &status)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -24,8 +33,7 @@ func ValidateCredsByEmail(email, password string) (username, role, bio, avatar s
 		return "", "", "", "", 0, status, err
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password))
-	if err != nil {
+	if bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)) != nil {
 		return "", "", "", "", 0, status, errors.New("invalid password")
 	}
 

@@ -6,6 +6,5 @@ BEGIN TRANSACTION;
 		token_type TEXT NOT NULL,
 		expires_at INTEGER NOT NULL
 	);
-
-    
+   
 COMMIT;
