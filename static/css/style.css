@@ -2285,18 +2285,21 @@ body[data-show-login="0"] #logoutBtn {
   #chat-sidebar {
     position: fixed;
     top: var(--navbar-h);
-    right: 0;
+    right: 13px;
   
     width: var(--chat-sidebar-w);
     height: calc(100vh - var(--navbar-h));
   
-    background: var(--bg);
+    background: color-mix(in srgb, var(--bg) 92%, var(--secondary));
     color: var(--fg);
     border-left: 1px solid var(--secondary);
   
     display: flex;
     flex-direction: column;
-  
+    
+    border-top: 1px solid var(--secondary);
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
     z-index: 900; /* below navbar */
   }
   
@@ -2306,7 +2309,9 @@ body[data-show-login="0"] #logoutBtn {
     border-bottom: 1px solid var(--secondary);
     font-size: 18px;
     font-weight: bold;
-  
+    
+    background: color-mix(in srgb, var(--color-accent-dark) 12%, var(--bg));
+    border-bottom: 1px solid var(--secondary);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2409,7 +2414,7 @@ body[data-show-login="0"] #logoutBtn {
     z-index: 1100;
   }
   #sidebar-toggle.chat-sidebar-collapsed{
-    right: calc(56px + var(--chat-gap));
+    right: calc(56px + var(--chat-gap) + 8px);
   }
   
   /* === CHAT PANEL === */
