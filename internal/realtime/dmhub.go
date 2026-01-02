@@ -15,6 +15,19 @@ type DMHub struct {
 	conns map[int]map[*websocket.Conn]struct{}
 }
 
+func (h *DMHub) ListOnlineUserIDs() []int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	out := make([]int, 0, len(h.conns))
+	for userID, set := range h.conns {
+		if len(set) > 0 {
+			out = append(out, userID)
+		}
+	}
+	return out
+}
+
 func NewDMHub() *DMHub {
 	return &DMHub{
 		conns: make(map[int]map[*websocket.Conn]struct{}),
@@ -69,6 +82,17 @@ func (h *DMHub) OnlineMap(userIDs []int) map[int]bool {
 		out[id] = ok && len(set) > 0
 	}
 	return out
+}
+
+func (h *DMHub) SendPresenceToUsers(targetUserIDs []int, userID int, online bool) {
+	msg := map[string]any{
+		"type":    "presence",
+		"user_id": userID,
+		"online":  online,
+	}
+	for _, t := range targetUserIDs {
+		h.SendToUser(t, msg)
+	}
 }
 
 func (h *DMHub) SendToUser(userID int, payload any) {

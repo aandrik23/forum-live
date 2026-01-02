@@ -47,7 +47,7 @@ func normalizePair(a, b int) (int, int) {
 	return b, a
 }
 
-func userExists(userID int) (bool, error) {
+func UserExists(userID int) (bool, error) {
 	var exists bool
 	err := DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM users WHERE id = ?)`, userID).Scan(&exists)
 	return exists, err
@@ -57,7 +57,7 @@ func userExists(userID int) (bool, error) {
 // Conversation + message ops
 // -------------------------
 
-func GetOrCreateConversation(userA, userB int) (int, error) {
+func GetOrCreateConversation(userA, userB int) (int, bool, error) {
 	u1, u2 := normalizePair(userA, userB)
 
 	// Try existing
@@ -68,10 +68,11 @@ func GetOrCreateConversation(userA, userB int) (int, error) {
 	).Scan(&convID)
 
 	if err == nil {
-		return convID, nil
+		return convID, false, nil
 	}
+
 	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
+		return 0, false, err
 	}
 
 	// Create new
@@ -87,16 +88,16 @@ func GetOrCreateConversation(userA, userB int) (int, error) {
 			u1, u2,
 		).Scan(&id2)
 		if err2 == nil {
-			return id2, nil
+			return id2, false, nil
 		}
-		return 0, err
+		return 0, false, err
 	}
 
 	id, err := res.LastInsertId()
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	return int(id), nil
+	return int(id), true, nil
 }
 
 func InsertDM(conversationID, senderID int, body string) (msgID int, createdAt int64, err error) {
@@ -154,9 +155,10 @@ func GetDMThreads(userID int) ([]DMThread, error) {
 			END
 		)
 		LEFT JOIN messages m ON m.id = c.last_message_id
-		WHERE c.user1_id = ? OR c.user2_id = ?
-		ORDER BY c.last_message_at DESC
-	`, userID, userID, userID, userID)
+		WHERE (c.user1_id = ? OR c.user2_id = ?)
+  			AND c.last_message_at IS NOT NULL
+			  ORDER BY c.last_message_at DESC, c.last_message_id DESC
+		`, userID, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +211,7 @@ func GetDMMessagesWithUser(selfUserID, otherUserID int, beforeID int, limit int)
 	}
 
 	// Validate other exists
-	exists, err := userExists(otherUserID)
+	exists, err := UserExists(otherUserID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -217,9 +219,12 @@ func GetDMMessagesWithUser(selfUserID, otherUserID int, beforeID int, limit int)
 		return nil, 0, errors.New("recipient not found")
 	}
 
-	convID, err := GetOrCreateConversation(selfUserID, otherUserID)
+	convID, ok, err := GetConversationIDIfExists(selfUserID, otherUserID)
 	if err != nil {
 		return nil, 0, err
+	}
+	if !ok {
+		return []DMMessage{}, 0, nil
 	}
 
 	// Base query: newest first, then frontend can reverse if it wants
@@ -253,5 +258,55 @@ func GetDMMessagesWithUser(selfUserID, otherUserID int, beforeID int, limit int)
 		}
 		out = append(out, m)
 	}
+	// reverse to oldest -> newest
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+
 	return out, convID, rows.Err()
+}
+
+func GetConversationIDIfExists(userA, userB int) (int, bool, error) {
+	u1, u2 := normalizePair(userA, userB)
+
+	var convID int
+	err := DB.QueryRow(
+		`SELECT id FROM conversations WHERE user1_id = ? AND user2_id = ?`,
+		u1, u2,
+	).Scan(&convID)
+
+	if err == nil {
+		return convID, true, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	return 0, false, err
+}
+
+func GetDMPartnerIDs(userID int) ([]int, error) {
+	rows, err := DB.Query(`
+		SELECT
+			CASE
+				WHEN user1_id = ? THEN user2_id
+				ELSE user1_id
+			END AS other_id
+		FROM conversations
+		WHERE (user1_id = ? OR user2_id = ?)
+		  AND last_message_at IS NOT NULL
+	`, userID, userID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

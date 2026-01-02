@@ -59,18 +59,54 @@ func DMWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	sendErr := func(msg string) {
+		_ = conn.WriteJSON(map[string]any{
+			"type":  "dm_error",
+			"error": msg,
+		})
+	}
 
 	userID := payload.UserID
 
 	// Register presence
 	becameOnline := realtime.DM.AddConn(userID, conn)
-	if becameOnline {
-		realtime.DM.BroadcastPresence(userID, true)
+	// also tell this client they are online (useful for UI)
+	_ = conn.WriteJSON(map[string]any{
+		"type":    "presence",
+		"user_id": userID,
+		"online":  true,
+	})
+
+	// Send presence snapshot to this client (initial state) - partners only
+	partners, err := database.GetDMPartnerIDs(userID)
+	online := []int{}
+	if err == nil && len(partners) > 0 {
+		for _, pid := range partners {
+			if realtime.DM.IsOnline(pid) {
+				online = append(online, pid)
+			}
+		}
 	}
+
+	_ = conn.WriteJSON(map[string]any{
+		"type":       "presence_snapshot",
+		"online_ids": online,
+	})
+
+	if becameOnline {
+		partners, err := database.GetDMPartnerIDs(userID)
+		if err == nil && len(partners) > 0 {
+			realtime.DM.SendPresenceToUsers(partners, userID, true)
+		}
+	}
+
 	defer func() {
 		becameOffline := realtime.DM.RemoveConn(userID, conn)
 		if becameOffline {
-			realtime.DM.BroadcastPresence(userID, false)
+			partners, err := database.GetDMPartnerIDs(userID)
+			if err == nil && len(partners) > 0 {
+				realtime.DM.SendPresenceToUsers(partners, userID, false)
+			}
 		}
 	}()
 
@@ -81,19 +117,18 @@ func DMWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 		return conn.SetReadDeadline(time.Now().Add(realtime.PongWait))
 	})
 
-	done := make(chan struct{})
-
 	ticker := time.NewTicker(realtime.PingPeriod)
 	defer ticker.Stop()
 
 	// Ping loop (separate)
 	go func() {
-		defer close(done)
 		for range ticker.C {
 			_ = conn.SetWriteDeadline(time.Now().Add(realtime.WriteWait))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				_ = conn.Close()
 				return
 			}
+
 		}
 	}()
 
@@ -110,40 +145,110 @@ func DMWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Validate
 		if msg.ToUserID <= 0 || msg.ToUserID == userID {
+			sendErr("invalid recipient")
 			continue
 		}
 		body := strings.TrimSpace(msg.Body)
 		if body == "" {
+			sendErr("empty message")
+			continue
+		}
+		if len(body) > 2000 {
+			sendErr("message too long")
+			continue
+		}
+
+		exists, err := database.UserExists(msg.ToUserID)
+		if err != nil {
+			sendErr("server error")
+			continue
+		}
+		if !exists {
+			sendErr("recipient not found")
 			continue
 		}
 
 		// Persist
-		convID, err := database.GetOrCreateConversation(userID, msg.ToUserID)
+		convID, created, err := database.GetOrCreateConversation(userID, msg.ToUserID)
 		if err != nil {
+			sendErr("server error")
 			continue
+		}
+
+		if created {
+			// If this is a brand new DM relationship, nudge presence both ways.
+			// This keeps partners-only presence logic consistent.
+			realtime.DM.SendToUser(msg.ToUserID, map[string]any{
+				"type":    "presence",
+				"user_id": userID,
+				"online":  true,
+			})
+			_ = conn.WriteJSON(map[string]any{
+				"type":    "presence",
+				"user_id": msg.ToUserID,
+				"online":  realtime.DM.IsOnline(msg.ToUserID),
+			})
 		}
 
 		msgID, createdAt, err := database.InsertDM(convID, userID, body)
 		if err != nil {
+			sendErr("server error")
 			continue
 		}
-		_ = database.UpdateConversationLast(convID, msgID, createdAt)
 
-		out := map[string]any{
+		if err := database.UpdateConversationLast(convID, msgID, createdAt); err != nil {
+			sendErr("server error")
+			continue
+		}
+		// thread bump for recipient: their "other_user_id" should be the sender
+		bumpToRecipient := map[string]any{
+			"type":                "thread_bump",
+			"other_user_id":       userID,
+			"last_message_body":   body,
+			"last_message_at":     createdAt,
+			"last_message_sender": userID,
+		}
+
+		// thread bump for sender: their "other_user_id" should be the recipient
+		bumpToSender := map[string]any{
+			"type":                "thread_bump",
+			"other_user_id":       msg.ToUserID,
+			"last_message_body":   body,
+			"last_message_at":     createdAt,
+			"last_message_sender": userID,
+		}
+		realtime.DM.SendToUser(msg.ToUserID, bumpToRecipient)
+		_ = conn.WriteJSON(bumpToSender)
+
+		// payload for recipient (their "conversation_with" must be the sender)
+		outToRecipient := map[string]any{
 			"type":              "dm_new",
-			"conversation_with": msg.ToUserID,
+			"conversation_with": userID, // sender id
 			"message": map[string]any{
-				"id":         msgID,
-				"sender_id":  userID,
-				"body":       body,
-				"created_at": createdAt,
+				"id":              msgID,
+				"sender_id":       userID,
+				"sender_username": payload.Username,
+				"body":            body,
+				"created_at":      createdAt,
 			},
 		}
 
-		realtime.DM.SendToUser(msg.ToUserID, out)
+		// payload for sender (their "conversation_with" is the recipient)
+		outToSender := map[string]any{
+			"type":              "dm_new",
+			"conversation_with": msg.ToUserID, // recipient id
+			"message": map[string]any{
+				"id":              msgID,
+				"sender_id":       userID,
+				"sender_username": payload.Username,
+				"body":            body,
+				"created_at":      createdAt,
+			},
+		}
 
-		// Echo to sender
-		_ = conn.WriteJSON(out)
+		realtime.DM.SendToUser(msg.ToUserID, outToRecipient)
+		_ = conn.WriteJSON(outToSender)
+
 	}
 
 }

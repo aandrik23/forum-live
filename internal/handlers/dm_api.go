@@ -122,17 +122,14 @@ func DMMessagesHandler(w http.ResponseWriter, r *http.Request) {
 
 	beforeID := 0
 	if b := r.URL.Query().Get("before_id"); b != "" {
-		if v, err := strconv.Atoi(b); err == nil && v > 0 {
-			beforeID = v
+		v, err := strconv.Atoi(b)
+		if err != nil || v <= 0 {
+			WriteJSONError(w, "invalid before_id", http.StatusBadRequest)
+			return
 		}
+		beforeID = v
 	}
-
 	limit := 10
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 50 {
-			limit = v
-		}
-	}
 
 	msgs, _, err := database.GetDMMessagesWithUser(payload.UserID, otherID, beforeID, limit)
 	if err != nil {
