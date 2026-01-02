@@ -13,8 +13,12 @@
                 rel="stylesheet"
         />
     </head>
-    <body class="{{ if not .IsLoggedIn }}force-black{{ end }}" data-show-login="{{ if .IsLoggedIn }}0{{ else }}1{{ end }}">
-    <!-- Navbar -->
+    <body
+        class="{{ if not .IsLoggedIn }}force-black{{ end }}"
+        data-show-login="{{ if .IsLoggedIn }}0{{ else }}1{{ end }}"
+        data-user-id="{{ .UserID }}"
+    >
+      <!-- Navbar -->
     <header class="navbar">
         <div class="navbar-inner container">
             <!-- LEFT: Logo + Home icon + Grid icon + New-post icon -->
@@ -185,8 +189,10 @@
             </p>
         </div>
     </div>
+    <div id="chat-root"></div>
 
     <script type="module" src="/static/js/main.js"></script>
+    <script src="/static/js/chat.js"></script>
     <div id="authBackdrop"></div>
     </body>
     </html>

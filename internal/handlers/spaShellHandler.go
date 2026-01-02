@@ -10,6 +10,7 @@ import (
 
 type BaseViewModel struct {
 	IsLoggedIn bool
+	UserID     int
 }
 
 func SPAShellHandler(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +22,16 @@ func SPAShellHandler(w http.ResponseWriter, r *http.Request) {
 	payload := authutils.GetJWTFromContext(r.Context())
 	isLoggedIn := payload != nil && payload.Role != authutils.RoleAnonymous
 
-	renderBaseOnly(w, BaseViewModel{IsLoggedIn: isLoggedIn})
+	uid := 0
+	if isLoggedIn {
+		uid = payload.UserID
+	}
+
+	renderBaseOnly(w, BaseViewModel{
+		IsLoggedIn: isLoggedIn,
+		UserID:     uid,
+	})
+
 }
 
 func renderBaseOnly(w http.ResponseWriter, vm BaseViewModel) {

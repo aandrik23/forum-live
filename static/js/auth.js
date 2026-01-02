@@ -57,14 +57,15 @@ export function initRegisterForm() {
 
     await res.json().catch(() => null);
 
-    setAuthState(true);
     syncTheme();
-    closeModal(registerModal);
-
+    closeModal(document.getElementById("loginModal"));
+    
     const next = sessionStorage.getItem("postLoginPath") || "/home";
     sessionStorage.removeItem("postLoginPath");
-    history.replaceState({}, "", next);
-    await loadPage(next); // or navigate(next) if your navigate doesn't block /home
+    
+    // IMPORTANT: force server-rendered base shell
+    window.location.assign(next);
+    
   });
 }
 
@@ -94,15 +95,14 @@ export function initLoginForm() {
 
     await res.json().catch(() => null);
 
-    setAuthState(true);
     syncTheme();
     closeModal(document.getElementById("loginModal"));
-
+    
     const next = sessionStorage.getItem("postLoginPath") || "/home";
     sessionStorage.removeItem("postLoginPath");
-
-    history.replaceState({}, "", next);
-    await loadPage(next);
+    
+    // IMPORTANT: force server-rendered base shell
+    window.location.assign(next);    
   });
 }
 
