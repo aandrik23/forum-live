@@ -39,6 +39,22 @@ type DMUser struct {
 // -------------------------
 // Helpers
 // -------------------------
+func MarkDMDelivered(msgID int, deliveredAt int64) error {
+	_, err := DB.Exec(
+		`UPDATE messages SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL`,
+		deliveredAt, msgID,
+	)
+	return err
+}
+
+func UpdateLastRead(convID int, msgID int) error {
+	_, err := DB.Exec(`
+		UPDATE conversations
+		SET last_read_msg_id = ?
+		WHERE id = ?
+	`, msgID, convID)
+	return err
+}
 
 func normalizePair(a, b int) (int, int) {
 	if a < b {
@@ -51,6 +67,40 @@ func UserExists(userID int) (bool, error) {
 	var exists bool
 	err := DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM users WHERE id = ?)`, userID).Scan(&exists)
 	return exists, err
+}
+
+// -------------------------
+// Delivery Status
+// -------------------------
+
+type UndeliveredDM struct {
+	MsgID    int
+	SenderID int
+}
+
+func GetUndeliveredDMsForUser(userID int) ([]UndeliveredDM, error) {
+	rows, err := DB.Query(`
+		SELECT m.id, m.sender_id
+		FROM messages m
+		JOIN conversations c ON c.id = m.conversation_id
+		WHERE m.delivered_at IS NULL
+		  AND m.sender_id != ?
+		  AND (c.user1_id = ? OR c.user2_id = ?)
+	`, userID, userID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []UndeliveredDM
+	for rows.Next() {
+		var r UndeliveredDM
+		if err := rows.Scan(&r.MsgID, &r.SenderID); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // -------------------------
@@ -205,27 +255,36 @@ func GetSuggestedDMUsers(selfUserID int) ([]DMUser, error) {
 	return out, rows.Err()
 }
 
-func GetDMMessagesWithUser(selfUserID, otherUserID int, beforeID int, limit int) ([]DMMessage, int, error) {
+func GetDMMessagesWithUser(selfUserID, otherUserID int, beforeID int, limit int) ([]DMMessage, int, int, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 10
 	}
 
 	// Validate other exists
 	exists, err := UserExists(otherUserID)
+
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
+
 	if !exists {
-		return nil, 0, errors.New("recipient not found")
+		return nil, 0, 0, errors.New("recipient not found")
 	}
 
 	convID, ok, err := GetConversationIDIfExists(selfUserID, otherUserID)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
+
 	if !ok {
-		return []DMMessage{}, 0, nil
+		return []DMMessage{}, 0, 0, nil
 	}
+
+	var lastRead int
+	_ = DB.QueryRow(
+		`SELECT last_read_msg_id FROM conversations WHERE id = ?`,
+		convID,
+	).Scan(&lastRead)
 
 	// Base query: newest first, then frontend can reverse if it wants
 	q := `
@@ -246,7 +305,7 @@ func GetDMMessagesWithUser(selfUserID, otherUserID int, beforeID int, limit int)
 
 	rows, err := DB.Query(q, args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, lastRead, err
 	}
 	defer rows.Close()
 
@@ -254,7 +313,7 @@ func GetDMMessagesWithUser(selfUserID, otherUserID int, beforeID int, limit int)
 	for rows.Next() {
 		var m DMMessage
 		if err := rows.Scan(&m.ID, &m.SenderID, &m.SenderUsername, &m.Body, &m.CreatedAt); err != nil {
-			return nil, 0, err
+			return nil, 0, lastRead, err
 		}
 		out = append(out, m)
 	}
@@ -263,7 +322,7 @@ func GetDMMessagesWithUser(selfUserID, otherUserID int, beforeID int, limit int)
 		out[i], out[j] = out[j], out[i]
 	}
 
-	return out, convID, rows.Err()
+	return out, convID, lastRead, rows.Err()
 }
 
 func GetConversationIDIfExists(userA, userB int) (int, bool, error) {

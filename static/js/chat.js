@@ -2,6 +2,9 @@
 // DM state
 // -----------------------------
 let ws = null;
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+let manualClose = false;
 
 let threads = [];              // left list: [{other_user_id, other_username, online, last_message_at, ...}]
 let suggestedUsers = [];       // only when threads empty: [{user_id, username, online, ...}]
@@ -16,6 +19,10 @@ let paging = {
 
 const CURRENT_USER_ID = Number(document.body.dataset.userId);
 
+const RECONNECT_BASE_MS = 500;
+const RECONNECT_MAX_MS  = 10000;
+const pendingMessages = new Map(); // client_msg_id -> payload
+
 // -----------------------------
 // Helpers
 // -----------------------------
@@ -23,6 +30,7 @@ function wsURL(path) {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${location.host}${path}`;
 }
+
 
 function toThreadUserListItems() {
   // If threads exist, they are the list. If none, use suggested users list.
@@ -244,14 +252,28 @@ function renderMessages() {
 
       const isMine = m.sender_id === CURRENT_USER_ID;
 
-        return `
-          <div class="chat-msg ${isMine ? "mine" : "theirs"}">
-            <div class="chat-msg-bubble">
-              <div class="chat-msg-body">${body}</div>
-              <div class="chat-msg-time">${when}</div>
+      let status = "";
+      if (isMine) {
+        if (m.read) {
+          status = "Read";
+        } else if (m.delivered) {
+          status = "Delivered";
+        } else {
+          status = "Sent";
+        }
+      }
+
+      return `
+        <div class="chat-msg ${isMine ? "mine" : "theirs"}">
+          <div class="chat-msg-bubble">
+            <div class="chat-msg-body">${body}</div>
+            <div class="chat-msg-time">
+              ${when}
+              ${isMine ? `<span class="chat-msg-status">${status}</span>` : ""}
             </div>
           </div>
-        `;
+        </div>
+      `;
     })
     .join("");
 }
@@ -297,6 +319,20 @@ async function loadThreads() {
   renderUsers(listItems);
 }
 
+function sendReadReceipt() {
+  if (!activeChatUser || activeMessages.length === 0) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const lastID = activeMessages[activeMessages.length - 1].id;
+
+  ws.send(JSON.stringify({
+    type: "dm_read",
+    conversation_with: activeChatUser.id,
+    last_read_msg_id: lastID
+  }));
+}
+
+
 async function loadInitialMessages() {
   paging.loading = true;
   paging.exhausted = false;
@@ -321,6 +357,8 @@ async function loadInitialMessages() {
     // Scroll to bottom after initial load
     const el = document.getElementById("chat-messages");
     if (el) el.scrollTop = el.scrollHeight;
+    //mark as read now that user opened the chat
+    sendReadReceipt();
   } finally {
     paging.loading = false;
   }
@@ -360,119 +398,227 @@ async function loadMoreMessages() {
 // -----------------------------
 // WebSocket
 // -----------------------------
-function connectWS() {
-  ws = new WebSocket(wsURL("/ws/dm"));
-
-  ws.onopen = () => {
-    // no-op
-  };
-
-  ws.onmessage = (ev) => {
-    let msg;
-    try {
-      msg = JSON.parse(ev.data);
-    } catch {
-      return;
-    }
-
-    // Presence snapshot: list of online partner ids
-    if (msg.type === "presence_snapshot" && Array.isArray(msg.online_ids)) {
-      applyPresenceSnapshot(msg.online_ids);
-      return;
-    }
-
-    // Presence single update
-    if (msg.type === "presence" && typeof msg.user_id === "number") {
-      applyPresenceUpdate(msg.user_id, !!msg.online);
-      return;
-    }
-
-    // Thread bump (reorder left list)
-    if (msg.type === "thread_bump" && typeof msg.other_user_id === "number") {
-      applyThreadBump(msg);
-      return;
-    }
-
-    // New DM message
-    if (msg.type === "dm_new" && msg.message && typeof msg.conversation_with === "number") {
-      applyIncomingDM(msg.conversation_with, msg.message);
-      return;
-    }
-
-    // Error
-    if (msg.type === "dm_error") {
-      // For now: console. You can show toast later.
-      console.warn("DM error:", msg.error);
-      return;
-    }
-  };
-
-  ws.onclose = () => {
-    // optional reconnect later; keep minimal for now
-    ws = null;
-  };
-}
-
-function applyPresenceSnapshot(onlineIds) {
-  // Update threads
-  const set = new Set(onlineIds);
-  threads = threads.map(t => ({ ...t, online: set.has(t.other_user_id) }));
-
-  // Update suggested users
-  suggestedUsers = suggestedUsers.map(u => ({ ...u, online: set.has(u.user_id) }));
-
-  renderUsers(sortUsers(toThreadUserListItems()));
-}
-
-function applyPresenceUpdate(userId, online) {
-  threads = threads.map(t => t.other_user_id === userId ? { ...t, online } : t);
-  suggestedUsers = suggestedUsers.map(u => u.user_id === userId ? { ...u, online } : u);
-
-  renderUsers(sortUsers(toThreadUserListItems()));
-}
-
-function applyThreadBump(bump) {
-  const otherId = bump.other_user_id;
-
-  // Ensure thread exists in list; if not, create minimal thread entry (new DM partner)
-  let found = false;
-  threads = threads.map(t => {
-    if (t.other_user_id === otherId) {
-      found = true;
-      return {
-        ...t,
-        last_message_body: bump.last_message_body || "",
-        last_message_at: bump.last_message_at || 0,
-        last_message_sender: bump.last_message_sender || 0
-      };
-    }
-    return t;
-  });
-
-  if (!found) {
-    // If threads were empty and we were showing suggested, move to threads UX:
-    // We'll add a minimal thread item; username/avatar may require refresh.
-    // Minimal approach: refresh threads once.
-    loadThreads();
+function handleWsMessage(ev) {
+  let msg;
+  try {
+    msg = JSON.parse(ev.data);
+  } catch {
     return;
   }
 
-  renderUsers(sortUsers(toThreadUserListItems()));
+  switch (msg.type) {
+
+    case "dm_ack": {
+      const { client_msg_id } = msg;
+      pendingMessages.delete(client_msg_id);
+      break;
+    }
+
+    case "dm_new": {
+      const { conversation_with, message } = msg;
+
+      if (activeChatUser && activeChatUser.id === conversation_with) {
+        appendMessage(message);
+
+        // suser is currently viewing this chat, so mark read
+        sendReadReceipt();
+      }
+
+      break;
+    }
+
+    case "dm_delivery": {
+      const { server_msg_id, delivered } = msg;
+    
+      const m = activeMessages.find(m => m.id === server_msg_id);
+      if (m) {
+        m.delivered = delivered;
+        renderMessages();
+      }
+      break;
+    }
+    case "dm_read": {
+      const { last_read_msg_id } = msg;
+    
+      activeMessages.forEach(m => {
+        if (m.id <= last_read_msg_id) {
+          m.read = true;
+        }
+      });
+    
+      renderMessages();
+      break;
+    }
+    
+
+    case "dm_error": {
+      console.warn("DM error:", msg.error);
+      break;
+    }
+    
+    case "thread_bump": {
+      const idx = threads.findIndex(t => t.other_user_id === msg.other_user_id);
+      if (idx !== -1) {
+        threads[idx].last_message_body = msg.last_message_body;
+        threads[idx].last_message_at = msg.last_message_at;
+        threads[idx].last_message_sender = msg.last_message_sender;
+      }
+      renderUsers(sortUsers(toThreadUserListItems()));
+      break;
+    }
+
+    case "presence": {
+      const { user_id, online } = msg;
+    
+      threads.forEach(t => {
+        if (t.other_user_id === user_id) {
+          t.online = online;
+        }
+      });
+    
+      suggestedUsers.forEach(u => {
+        if (u.user_id === user_id) {
+          u.online = online;
+        }
+      });
+    
+      renderUsers(sortUsers(toThreadUserListItems()));
+      break;
+    }
+    
+
+    case "presence_snapshot": {
+      const onlineSet = new Set(msg.online_ids || []);
+
+      threads.forEach(t => {
+        t.online = onlineSet.has(t.other_user_id);
+      });
+
+      suggestedUsers.forEach(u => {
+        u.online = onlineSet.has(u.user_id);
+      });
+
+      renderUsers(sortUsers(toThreadUserListItems()));
+      break;
+    }
+
+    default:
+      // ignore unknown types
+      break;
+  }
 }
 
-function applyIncomingDM(conversationWith, message) {
-  // If active chat matches, append
-  if (activeChatUser && activeChatUser.id === conversationWith) {
-    appendMessage(message);
+function connectWS() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
   }
 
-  // Also bump ordering via thread bump if backend didn’t (but it does).
-  // We keep minimal: do nothing here.
+  manualClose = false;
+
+  ws = new WebSocket(wsURL("/ws/dm"));
+
+  ws.addEventListener("open", () => {
+    reconnectAttempt = 0;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    for (const payload of pendingMessages.values()) {
+      ws.send(JSON.stringify(payload));
+    }
+
+    // server already sends:
+    // - presence (self)
+    // - presence_snapshot
+    // so nothing extra needed here
+  });
+
+  ws.addEventListener("message", (ev) => {
+    handleWsMessage(ev); // your existing router
+  });
+
+  ws.addEventListener("close", () => {
+    if (!manualClose) {
+      scheduleReconnect();
+    }
+  });
+
+  ws.addEventListener("error", () => {
+    // let close() drive reconnect
+  });
 }
+
+function disconnectWS() {
+  manualClose = true;
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+
+  const exp = Math.min(
+    RECONNECT_MAX_MS,
+    RECONNECT_BASE_MS * (2 ** reconnectAttempt++)
+  );
+
+  const jitter = exp * (Math.random() * 0.4 - 0.2); // ±20%
+  const delay = Math.max(250, Math.floor(exp + jitter));
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectWS();
+  }, delay);
+}
+
+// passive recovery
+window.addEventListener("online", () => connectWS());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    connectWS();
+  }
+});
 
 // -----------------------------
 // Sending
 // -----------------------------
+function genClientMsgID() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  // fallback: RFC4122-ish v4 UUID using crypto.getRandomValues
+  if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function") {
+    const b = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(b);
+
+    // v4
+    b[6] = (b[6] & 0x0f) | 0x40;
+    // variant
+    b[8] = (b[8] & 0x3f) | 0x80;
+
+    const hex = [...b].map(x => x.toString(16).padStart(2, "0")).join("");
+    return (
+      hex.slice(0, 8) + "-" +
+      hex.slice(8, 12) + "-" +
+      hex.slice(12, 16) + "-" +
+      hex.slice(16, 20) + "-" +
+      hex.slice(20)
+    );
+  }
+
+  // last resort (still unique enough for client_msg_id)
+  return "m_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2);
+}
+
 function sendActiveMessage() {
   if (!activeChatUser) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -481,13 +627,28 @@ function sendActiveMessage() {
   const body = (input.value || "").trim();
   if (!body) return;
 
-  ws.send(JSON.stringify({
-    type: "dm_send",
-    to_user_id: activeChatUser.id,
-    body
-  }));
+  sendDM(activeChatUser.id, body);
 
   input.value = "";
+}
+
+function sendDM(toUserID, body) {
+  const clientMsgID = genClientMsgID();
+
+  const payload = {
+    type: "dm_send",
+    to_user_id: toUserID,
+    body,
+    client_msg_id: clientMsgID
+  };
+
+  pendingMessages.set(clientMsgID, payload);
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+
+  // optimistic UI render remains unchanged
 }
 
 // -----------------------------

@@ -131,15 +131,15 @@ func DMMessagesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := 10
 
-	msgs, _, err := database.GetDMMessagesWithUser(payload.UserID, otherID, beforeID, limit)
+	msgs, _, lastRead, err := database.GetDMMessagesWithUser(payload.UserID, otherID, beforeID, limit)
 	if err != nil {
 		// Keep errors generic for safety
 		WriteJSONError(w, "server error", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"messages": msgs,
+		"messages":         msgs,
+		"last_read_msg_id": lastRead,
 	})
 }
