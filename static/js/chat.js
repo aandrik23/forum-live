@@ -136,9 +136,16 @@ function renderUsers(users) {
     div.className = "chat-user";
     div.dataset.userId = String(user.id);
     div.innerHTML = `
-      <span class="chat-username">${escapeHTML(user.username)}</span>
-      <span class="chat-status ${user.online ? "chat-online" : "chat-offline"}"></span>
-    `;
+        <div class="chat-user-left">
+          <span class="chat-username">${escapeHTML(user.username)}</span>
+          ${user.lastMessageBody ? `<div class="chat-last">${escapeHTML(user.lastMessageBody)}</div>` : ``}
+        </div>
+        <div class="chat-user-right">
+          ${user.lastMessageAt ? `<div class="chat-last-time">${fmtTime(user.lastMessageAt)}</div>` : ``}
+          <span class="chat-status ${user.online ? "chat-online" : "chat-offline"}"></span>
+        </div>
+      `;
+  
     div.addEventListener("click", () => {
         document.querySelectorAll(".chat-user.active")
           .forEach(el => el.classList.remove("active"));
