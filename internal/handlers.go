@@ -59,7 +59,7 @@ func Handlers() {
 	// (Recommended) make logout API too:
 	mux.HandleFunc("/api/logout", apiAuth(handlers.LogoutHandler))
 
-	mux.HandleFunc("/ws/dm", apiAuth(handlers.DMWebSocketHandler))
+	mux.HandleFunc("/ws/dm", apiProtected(handlers.DMWebSocketHandler))
 	// 4) SPA shell catch-all (PUBLIC)
 	mux.HandleFunc("/", apiAuth(handlers.SPAShellHandler))
 

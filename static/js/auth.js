@@ -126,6 +126,7 @@ export function initLogout() {
       return;
     }
     
+    disconnectWS();
     //  Switch to anon state immediately
     setAuthState(false);
 

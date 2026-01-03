@@ -519,6 +519,9 @@ function handleWsMessage(ev) {
 }
 
 function connectWS() {
+  //  do not connect if logged out
+  if (document.body.dataset.showLogin === "1") return;
+  
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
     return;
   }
@@ -547,11 +550,15 @@ function connectWS() {
     handleWsMessage(ev); // your existing router
   });
 
-  ws.addEventListener("close", () => {
+  ws.addEventListener("close", (e) => {
+    // 1008 = Policy Violation (logout / auth revoked)
+    if (e.code === 1008) return;
+  
     if (!manualClose) {
       scheduleReconnect();
     }
   });
+  
 
   ws.addEventListener("error", () => {
     // let close() drive reconnect
