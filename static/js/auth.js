@@ -125,7 +125,7 @@ export function initLogout() {
       console.error("Logout failed:", res.status);
       return;
     }
-
+    
     //  Switch to anon state immediately
     setAuthState(false);
 

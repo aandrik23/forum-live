@@ -61,7 +61,6 @@ func DMWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
 	sendErr := func(msg string) {
 		_ = conn.WriteJSON(map[string]any{
 			"type":  "dm_error",
@@ -122,13 +121,8 @@ func DMWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func() {
-		becameOffline := realtime.DM.RemoveConn(userID, conn)
-		if becameOffline {
-			partners, err := database.GetDMPartnerIDs(userID)
-			if err == nil && len(partners) > 0 {
-				realtime.DM.SendPresenceToUsers(partners, userID, false)
-			}
-		}
+		// tolerate already-removed connections
+		realtime.DM.RemoveConn(userID, conn)
 	}()
 
 	// Heartbeat
@@ -142,14 +136,14 @@ func DMWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	defer ticker.Stop()
 
 	// Ping loop (separate)
+	done := make(chan struct{})
+
 	go func() {
+		defer close(done)
 		for range ticker.C {
-			_ = conn.SetWriteDeadline(time.Now().Add(realtime.WriteWait))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				_ = conn.Close()
 				return
 			}
-
 		}
 	}()
 
@@ -157,6 +151,7 @@ func DMWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		var msg dmClientMsg
 		if err := conn.ReadJSON(&msg); err != nil {
+			<-done
 			return
 		}
 

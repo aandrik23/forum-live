@@ -22,6 +22,8 @@ const CURRENT_USER_ID = Number(document.body.dataset.userId);
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS  = 10000;
 const pendingMessages = new Map(); // client_msg_id -> payload
+const deliveryStatusMap = new Map(); // messageID -> deliveredAt
+const lastReadByUser = new Map();
 
 // -----------------------------
 // Helpers
@@ -246,21 +248,24 @@ function renderMessages() {
 
   el.innerHTML = activeMessages
     .map(m => {
-      const who = escapeHTML(m.sender_username || String(m.sender_id));
       const when = fmtTime(m.created_at);
       const body = escapeHTML(m.body);
 
       const isMine = m.sender_id === CURRENT_USER_ID;
 
       let status = "";
-      if (isMine) {
-        if (m.read) {
-          status = "Read";
-        } else if (m.delivered) {
-          status = "Delivered";
-        } else {
-          status = "Sent";
-        }
+      const otherID = activeChatUser?.id;
+      const lastRead = lastReadByUser.get(otherID) || 0;
+
+      const isRead = isMine && m.id <= lastRead;
+      const isDelivered = isMine && deliveryStatusMap.has(m.id);
+
+      if (isRead) {
+        status = "Read";
+      } else if (isDelivered) {
+        status = "Delivered";
+      } else {
+        status = "Sent";
       }
 
       return `
@@ -277,6 +282,7 @@ function renderMessages() {
     })
     .join("");
 }
+
 
 function appendMessage(msgObj) {
   // msgObj: {id, sender_id, sender_username, body, created_at}
@@ -323,14 +329,18 @@ function sendReadReceipt() {
   if (!activeChatUser || activeMessages.length === 0) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-  const lastID = activeMessages[activeMessages.length - 1].id;
+  const lastMsg = activeMessages[activeMessages.length - 1];
+
+  // DO NOT mark read if I sent the last message
+  if (lastMsg.sender_id === CURRENT_USER_ID) return;
 
   ws.send(JSON.stringify({
     type: "dm_read",
     conversation_with: activeChatUser.id,
-    last_read_msg_id: lastID
+    last_read_msg_id: lastMsg.id
   }));
 }
+
 
 
 async function loadInitialMessages() {
@@ -341,9 +351,15 @@ async function loadInitialMessages() {
   try {
     const res = await fetch(`/api/dm/messages?user_id=${encodeURIComponent(activeChatUser.id)}`, { method: "GET" });
     if (!res.ok) return;
-
     const data = await res.json();
     const msgs = Array.isArray(data.messages) ? data.messages : [];
+
+    lastReadByUser.set(activeChatUser.id, data.last_read_msg_id || 0);
+
+    // Merge global delivery status into each message
+    msgs.forEach(msg => {
+      msg.delivered = deliveryStatusMap.get(msg.id) || false;
+    });
 
     activeMessages = msgs;
     renderMessages();
@@ -357,12 +373,14 @@ async function loadInitialMessages() {
     // Scroll to bottom after initial load
     const el = document.getElementById("chat-messages");
     if (el) el.scrollTop = el.scrollHeight;
-    //mark as read now that user opened the chat
+
+    // mark as read now that user opened the chat
     sendReadReceipt();
   } finally {
     paging.loading = false;
   }
 }
+
 
 async function loadMoreMessages() {
   if (!activeChatUser) return;
@@ -429,27 +447,19 @@ function handleWsMessage(ev) {
 
     case "dm_delivery": {
       const { server_msg_id, delivered } = msg;
-    
-      const m = activeMessages.find(m => m.id === server_msg_id);
-      if (m) {
-        m.delivered = delivered;
+      if (delivered) {
+        deliveryStatusMap.set(server_msg_id, true);
         renderMessages();
       }
       break;
-    }
+    }    
+    
     case "dm_read": {
-      const { last_read_msg_id } = msg;
-    
-      activeMessages.forEach(m => {
-        if (m.id <= last_read_msg_id) {
-          m.read = true;
-        }
-      });
-    
+      const { conversation_with, last_read_msg_id } = msg;
+      lastReadByUser.set(conversation_with, last_read_msg_id);
       renderMessages();
       break;
-    }
-    
+    }    
 
     case "dm_error": {
       console.warn("DM error:", msg.error);

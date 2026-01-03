@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"forum/internal/database"
 	"forum/internal/logger"
+	"forum/internal/realtime"
 	"forum/internal/utils"
 	"net/http"
 	"strings"
@@ -65,7 +66,7 @@ func writeAPIUnauthorized(w http.ResponseWriter) {
 }
 
 // only to actively reset the session (expired refresh, revoked token, invalid signature). , we issue anon token and redirect user to home page
-func redirectToHomeAsAnon(w http.ResponseWriter, r *http.Request) {
+func redirectToHomeAsAnon(w http.ResponseWriter, r *http.Request, payload *JWTPayload) {
 	isAPI := strings.HasPrefix(r.URL.Path, "/api/") ||
 		strings.Contains(r.Header.Get("Accept"), "application/json") ||
 		r.Header.Get("X-Requested-With") == "XMLHttpRequest"
@@ -78,6 +79,9 @@ func redirectToHomeAsAnon(w http.ResponseWriter, r *http.Request) {
 
 	// Browser navigation: reset session + issue anon + redirect
 	ExpireTokens(w, r)
+	if payload != nil {
+		realtime.DM.ForceDisconnectUser(payload.UserID)
+	}
 	uuid := utils.GenerateUUID()
 	createAnonymousToken(w, uuid)
 
@@ -157,21 +161,21 @@ func authenticateRequest(w http.ResponseWriter, r *http.Request, accessToken str
 		refreshTok, ok := getCookieValue(r, "refresh_token")
 		if !ok {
 			safeLogWithRequest(r, "Missing refresh token", payload, logger.ErrorLevel)
-			redirectToHomeAsAnon(w, r)
+			redirectToHomeAsAnon(w, r, payload)
 			return nil, r, false
 		}
 
 		newAccess, err := refreshAccessToken(refreshTok, w, r)
 		if err != nil {
 			safeLogWithRequest(r, "Session expired", payload, logger.ErrorLevel)
-			redirectToHomeAsAnon(w, r)
+			redirectToHomeAsAnon(w, r, payload)
 			return nil, r, false
 		}
 
 		payload, err = VerifyJWT(newAccess, TokenTypeAccess)
 		if err != nil {
 			safeLogWithRequest(r, "Token refresh failed", payload, logger.ErrorLevel)
-			redirectToHomeAsAnon(w, r)
+			redirectToHomeAsAnon(w, r, payload)
 			return nil, r, false
 		}
 
@@ -183,7 +187,7 @@ func authenticateRequest(w http.ResponseWriter, r *http.Request, accessToken str
 
 	// invalid signature/structure/etc
 	safeLogWithRequest(r, "Invalid token", payload, logger.ErrorLevel)
-	redirectToHomeAsAnon(w, r)
+	redirectToHomeAsAnon(w, r, payload)
 	return nil, r, false
 }
 
@@ -192,7 +196,7 @@ func checkAccessJTI(w http.ResponseWriter, r *http.Request, payload *JWTPayload)
 		exists, err := database.TokenExists(payload.JTI)
 		if err != nil || !exists {
 			safeLogWithRequest(r, "Access token revoked or invalid", payload, logger.ErrorLevel)
-			redirectToHomeAsAnon(w, r)
+			redirectToHomeAsAnon(w, r, payload)
 			return false
 		}
 		return true

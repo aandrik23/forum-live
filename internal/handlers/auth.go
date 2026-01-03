@@ -6,6 +6,7 @@ import (
 	authutils "forum/internal/authUtils"
 	"forum/internal/database"
 	"forum/internal/logger"
+	"forum/internal/realtime"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -83,6 +84,7 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	authutils.ExpireTokens(w, r)
 
 	if payload != nil {
+		realtime.DM.ForceDisconnectUser(payload.UserID)
 		_ = database.UpdateUserStatus(payload.UserID, "inactive")
 	}
 

@@ -2409,7 +2409,7 @@ body[data-show-login="0"] #logoutBtn {
     background: var(--accent);
   }
   .chat-offline {
-    background: color-mix(in srgb, var(--secondary) 70%, transparent);
+    background: grey;
   }
   
   /* keep your existing main sidebar toggle visible and not covered by chat */

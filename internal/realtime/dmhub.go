@@ -142,6 +142,40 @@ func (h *DMHub) BroadcastPresence(userID int, online bool) {
 	}
 }
 
+func (h *DMHub) ForceDisconnectUser(userID int) {
+	h.mu.Lock()
+	set, ok := h.conns[userID]
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+
+	// copy conns before mutating map
+	conns := make([]*websocket.Conn, 0, len(set))
+	for c := range set {
+		conns = append(conns, c)
+	}
+
+	// authoritative removal
+	delete(h.conns, userID)
+	h.mu.Unlock()
+
+	// close sockets outside lock
+	for _, c := range conns {
+		_ = c.WriteMessage(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(
+				websocket.ClosePolicyViolation,
+				"session expired",
+			),
+		)
+		_ = c.Close()
+	}
+
+	// single authoritative presence update
+	h.BroadcastPresence(userID, false)
+}
+
 // Heartbeat helpers (used by WS handler)
 const (
 	WriteWait  = 10 * time.Second
