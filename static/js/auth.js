@@ -194,7 +194,7 @@ export function initAuthModals() {
     });
   });
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && document.body.dataset.showLogin === "1") {
+    if (e.key === "Escape" && isAnonymous()) {
       e.preventDefault();
     }
   });

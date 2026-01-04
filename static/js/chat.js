@@ -1,6 +1,7 @@
 import { authFetch } from "./auth.js";
 import { onAppReset } from "./appReset.js";
 import { escapeHtml } from "./render/renderUtils.js";
+import { isAnonymous } from "./utils.js";
 
 onAppReset(() => {
   resetChatState();
@@ -11,6 +12,7 @@ onAppReset(() => {
 let ws = null;
 let reconnectTimer = null;
 let reconnectAttempt = 0;
+const MAX_RECONNECT_ATTEMPTS = 6; // ~30–60 seconds total
 let manualClose = false;
 
 let threads = [];              // left list: [{other_user_id, other_username, online, last_message_at, ...}]
@@ -114,7 +116,7 @@ function throttle(fn, waitMs) {
 // DOM creation
 // -----------------------------
 function createChatSidebar() {
-    if (document.body.dataset.showLogin === "1") return;
+    if (isAnonymous()) return;    
     const root = document.getElementById("chat-root");
     root.innerHTML = `
       <div id="chat-sidebar">
@@ -519,7 +521,7 @@ function handleWsMessage(ev) {
 
 function connectWS() {
   //  do not connect if logged out
-  if (document.body.dataset.showLogin === "1") return;
+  if (isAnonymous()) return;
   
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
     return;
@@ -597,18 +599,26 @@ function disconnectWS() {
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
+  if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) return;
 
   const exp = Math.min(
     RECONNECT_MAX_MS,
     RECONNECT_BASE_MS * (2 ** reconnectAttempt++)
   );
 
-  const jitter = exp * (Math.random() * 0.4 - 0.2); // ±20%
+  const jitter = exp * (Math.random() * 0.4 - 0.2);
   const delay = Math.max(250, Math.floor(exp + jitter));
 
-  reconnectTimer = setTimeout(() => {
+  reconnectTimer = setTimeout(async () => {
     reconnectTimer = null;
-    connectWS();
+  
+    try {
+      const res = await authFetch("/api/auth/ping", { method: "GET" });
+      if (!res.ok) throw new Error();
+      connectWS();
+    } catch {
+      console.warn("WS reconnect aborted: auth invalid");
+    }
   }, delay);
 }
 

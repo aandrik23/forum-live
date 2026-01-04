@@ -1,4 +1,4 @@
-import { closeModal, openModal } from "./utils.js";
+import { closeModal, openModal, isAnonymous } from "./utils.js";
 import { navigate } from "./router.js";
 
 // DOM Elements
@@ -78,6 +78,11 @@ export function initThemeToggle() {
   
   // ------------------ SIDEBAR TOGGLE ------------------
 export function initSidebarToggle() {
+  if (isAnonymous()) {
+    document.querySelector(".sidebar")?.remove();
+    document.getElementById("sidebar-toggle")?.remove();
+    return;
+  }
     const collapsed = localStorage.getItem('sidebarCollapsed') === 'true';
     sidebar?.classList.toggle('collapsed', collapsed);
     contentWrapper?.classList.toggle('collapsed', collapsed);

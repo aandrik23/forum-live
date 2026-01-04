@@ -670,6 +670,11 @@ html.dark-mode .logout-btn:focus {
 }
 
 
+body[data-show-login="1"] .sidebar,
+body[data-show-login="1"] #sidebar-toggle {
+  display: none !important;
+}
+
 .sidebar-toggle {
     position: fixed;
     top:      50%;
