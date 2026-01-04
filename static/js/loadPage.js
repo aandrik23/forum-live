@@ -6,7 +6,7 @@ import { getCookie } from "./utils.js";
 import { renderProfileFromJSON } from "./renderProfile.js"; // new file (recommended)
 import { navigate } from "./router.js";
 import { fillCsrfInputs, openModal } from "./utils.js";
-import { setAuthState, isLoggedIn } from "./auth.js";
+import { setAuthState, isLoggedIn, authFetch } from "./auth.js";
 import { initLikeButtons, initCommentForm } from "./comments.js";
 let isLoading = false;
 
@@ -14,16 +14,6 @@ window.addEventListener('popstate', () => {
   const path = window.location.pathname + window.location.search;
   loadPage(path);
 });
-
-function handle401(nextPath) {
-  setAuthState(false);
-  sessionStorage.setItem("postLoginPath", nextPath);
-
-  const root = document.getElementById("app-root");
-  if (root) root.innerHTML = "";
-
-  openModal(document.getElementById("loginModal"));
-}
 
 async function loadHomeAPI(path) {
     
@@ -36,16 +26,11 @@ async function loadHomeAPI(path) {
       for (const [k, v] of qs.entries()) url.searchParams.set(k, v);
     }
   
-    const res = await fetch(url.toString(), {
+    const res = await authFetch(url.toString(), {
       method: "GET",
       credentials: "include",
       headers: { Accept: "application/json" },
     });
-    
-    if (res.status === 401) {
-      handle401(path);
-      return;
-    }
     
     if (!res.ok) throw new Error(`Home API failed: ${res.status}`);
     
@@ -136,17 +121,12 @@ export function initPageContent() {
 }
 
 async function loadCreatePostAPI() {
-    const res = await fetch("/api/posts/new", {
+    const res = await authFetch("/api/posts/new", {
       method: "GET",
       credentials: "include",
       headers: { "Accept": "application/json" },
     });
   
-    if (res.status === 401) {
-      handle401("/posts/new");
-      return;
-    }
-    
     if (!res.ok) throw new Error(`Create init API failed: ${res.status}`);
   
     const data = await res.json();
@@ -191,7 +171,7 @@ function initCreatePostBindings() {
       try {
         const csrf = getCookie("csrf_token");
   
-        const res = await fetch("/api/posts", {
+        const res = await authFetch("/api/posts", {
           method: "POST",
           credentials: "include",
           headers: {
@@ -221,16 +201,12 @@ function initCreatePostBindings() {
   }
 
 async function loadPostAPI(id) {
-    const res = await fetch(`/api/post?id=${encodeURIComponent(id)}`, {
+    const res = await authFetch(`/api/post?id=${encodeURIComponent(id)}`, {
       method: "GET",
       credentials: "include",
       headers: { Accept: "application/json" },
     });
   
-    if (res.status === 401) {
-      handle401(`/post/${id}`);
-      return;
-    }
     if (!res.ok) throw new Error(`Post API failed: ${res.status}`);
     
     const data = await res.json();
@@ -245,16 +221,11 @@ async function loadPostAPI(id) {
   }
   
 async function loadProfileAPI() {
-    const res = await fetch("/api/profile", {
+    const res = await authFetch("/api/profile", {
       method: "GET",
       credentials: "include",
       headers: { "Accept": "application/json" },
     });
-  
-    if (res.status === 401) {
-      handle401("/profile");
-      return;
-    }    
   
     if (!res.ok) throw new Error(`Profile API failed: ${res.status}`);
   

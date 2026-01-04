@@ -1,6 +1,7 @@
-import {getCookie, openModal, isAnonymous} from "./utils.js";
-import { registerModal } from "./auth.js";
+import {getCookie, isAnonymous} from "./utils.js";
+import { authFetch } from "./auth.js";
 import { escapeHtml, formatGoDate } from "./render.js";
+
 //NEW COMMENT
 let commentsBound = false;
 
@@ -56,17 +57,12 @@ export function initCommentForm() {
     });
 
     try {
-      const res = await fetch("/api/posts/comments", {
+      const res = await authFetch("/api/posts/comments", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
         body: JSON.stringify({ post_id: postId, content }),
       });
-
-      if (res.status === 403) {
-        openModal(registerModal);
-        throw new Error("forbidden");
-      }
       if (!res.ok) throw new Error(await res.text());
 
       const saved = await res.json(); // {id, author, content, created_at, likes, dislikes}
@@ -111,17 +107,13 @@ export function initLikeButtons() {
     const csrfToken = getCookie("csrf_token");
 
     try {
-      const res = await fetch("/api/posts/react", {
+      const res = await authFetch("/api/posts/react", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
         body: JSON.stringify({ target_type: targetType, target_id: targetId, action }),
       });
 
-      if (res.status === 403) {
-        openModal(registerModal);
-        return;
-      }
       if (!res.ok) {
         console.error("Reaction failed:", await res.text());
         return;

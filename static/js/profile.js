@@ -1,5 +1,6 @@
 import { openModal, closeModal, AVATAR_SEEDS, isAnonymous, getCookie } from "./utils.js";
 import { navigate } from "./router.js";
+import { authFetch } from "./auth.js";
 
 // Profile modal
 export function initProfileModal() {
@@ -110,7 +111,7 @@ export function initProfileModal() {
 
     try {
       const csrfToken = getCookie('csrf_token');
-      const res = await fetch('/api/profile/update', {
+      const res = await authFetch('/api/profile/update', {
         method: 'POST',
         credentials: 'include',
         headers: {

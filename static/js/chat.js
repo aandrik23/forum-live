@@ -1,3 +1,5 @@
+import { authFetch } from "./auth.js";
+
 // -----------------------------
 // DM state
 // -----------------------------
@@ -116,6 +118,7 @@ function throttle(fn, waitMs) {
 // DOM creation
 // -----------------------------
 function createChatSidebar() {
+    if (document.body.dataset.showLogin === "1") return;
     const root = document.getElementById("chat-root");
     root.innerHTML = `
       <div id="chat-sidebar">
@@ -313,7 +316,7 @@ function prependMessages(msgs) {
 // HTTP API
 // -----------------------------
 async function loadThreads() {
-  const res = await fetch("/api/dm/threads", { method: "GET" });
+  const res = await authFetch("/api/dm/threads", { method: "GET" });
   if (!res.ok) return;
 
   const data = await res.json();
@@ -349,7 +352,7 @@ async function loadInitialMessages() {
   paging.oldestId = null;
 
   try {
-    const res = await fetch(`/api/dm/messages?user_id=${encodeURIComponent(activeChatUser.id)}`, { method: "GET" });
+    const res = await authFetch(`/api/dm/messages?user_id=${encodeURIComponent(activeChatUser.id)}`, { method: "GET" });
     if (!res.ok) return;
     const data = await res.json();
     const msgs = Array.isArray(data.messages) ? data.messages : [];
@@ -392,7 +395,7 @@ async function loadMoreMessages() {
   paging.loading = true;
   try {
     const url = `/api/dm/messages?user_id=${encodeURIComponent(activeChatUser.id)}&before_id=${encodeURIComponent(paging.oldestId)}`;
-    const res = await fetch(url, { method: "GET" });
+    const res = await authFetch(url, { method: "GET" });
     if (!res.ok) return;
 
     const data = await res.json();
@@ -563,6 +566,23 @@ function connectWS() {
   ws.addEventListener("error", () => {
     // let close() drive reconnect
   });
+}
+
+export function resetChatState() {
+  disconnectWS();
+
+  threads = [];
+  suggestedUsers = [];
+  activeChatUser = null;
+  activeMessages = [];
+  paging = { oldestId: null, loading: false, exhausted: false };
+
+  pendingMessages.clear();
+  deliveryStatusMap.clear();
+  lastReadByUser.clear();
+
+  document.getElementById("chat-panel")?.remove();
+  document.getElementById("chat-sidebar")?.remove();
 }
 
 function disconnectWS() {

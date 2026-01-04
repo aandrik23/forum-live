@@ -1,6 +1,7 @@
 import { initLikeButtons } from "./comments.js";
 import { openModal, closeModal, getCookie, isAnonymous } from "./utils.js";
 import { navigate } from "./router.js"
+import { authFetch } from "./auth.js";
 
 export function initDeletePostModal() {
   if (isAnonymous()) return;
@@ -32,7 +33,7 @@ export function initDeletePostModal() {
 
     try {
       const csrf = getCookie("csrf_token");
-      const res = await fetch("/api/posts/delete", {
+      const res = await authFetch("/api/posts/delete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -125,7 +126,7 @@ export function initPostPreviewModal() {
       commentForm.dataset.postId = postId;
 
       // Load comments dynamically
-      fetch(`/api/posts/comments?post_id=${postId}`)
+      authFetch(`/api/posts/comments?post_id=${postId}`)
         .then(res => res.json())
         .then(comments => {
           comments.forEach(c => {

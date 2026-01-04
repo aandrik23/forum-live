@@ -1,5 +1,5 @@
 import { openModal, closeModal, syncTheme } from "./utils.js";
-import { loadPage } from "./loadPage.js";
+import { resetChatState } from "./chat.js";
 
 const footerLoginLink = document.getElementById("footerLoginLink");
 const footerRegisterLink = document.getElementById("footerRegisterLink");
@@ -7,6 +7,40 @@ const globalCloseBtns = document.querySelectorAll(".modal-close");
 const loginBtn = document.getElementById("loginBtn");
 const registerBtn = document.getElementById("registerBtn");
 const loginModal = document.getElementById("loginModal");
+
+export async function authFetch(input, init = {}) {
+  const res = await fetch(input, {
+    credentials: "include",
+    ...init,
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    setAuthState(false);
+    resetAppStateToAnon();
+
+    // preserve current SPA path, not API path
+    const spaPath = window.location.pathname + window.location.search;
+    sessionStorage.setItem("postLoginPath", spaPath);
+
+    openModal(document.getElementById("loginModal"));
+    throw new Error("Unauthenticated");
+  }
+
+  return res;
+}
+
+
+function resetAppStateToAnon() {
+  // ---- DM ----
+  resetChatState();
+
+  // ---- Main app ----
+  const root = document.getElementById("app-root");
+  if (root) root.innerHTML = "";
+
+  history.replaceState({}, "", "/");
+}
+
 
 export function setAuthState(isLoggedIn) {
   document.body.dataset.showLogin = isLoggedIn ? "0" : "1";
@@ -120,27 +154,19 @@ export function initLogout() {
       credentials: "include",
       headers: { Accept: "application/json" },
     });
-
+  
     if (!res.ok) {
       console.error("Logout failed:", res.status);
       return;
     }
-    
-    disconnectWS();
-    //  Switch to anon state immediately
+  
     setAuthState(false);
-
-    //  Blank app content (no anon content allowed)
-    const root = document.getElementById("app-root");
-    if (root) root.innerHTML = "";
-
-    //  Reset URL
-    history.replaceState({}, "", "/");
-
-    //  Force login modal
+    resetAppStateToAnon();
+  
     sessionStorage.setItem("postLoginPath", "/home");
-    openModal(document.getElementById("loginModal"));    
+    openModal(document.getElementById("loginModal"));
   });
+  
 }
 
   // Modal wiring (login/register)
