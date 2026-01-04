@@ -1,5 +1,5 @@
 import { openModal, closeModal, syncTheme } from "./utils.js";
-import { resetChatState } from "./chat.js";
+import { appReset } from "./appReset.js";
 
 const footerLoginLink = document.getElementById("footerLoginLink");
 const footerRegisterLink = document.getElementById("footerRegisterLink");
@@ -16,31 +16,15 @@ export async function authFetch(input, init = {}) {
 
   if (res.status === 401 || res.status === 403) {
     setAuthState(false);
-    resetAppStateToAnon();
-
-    // preserve current SPA path, not API path
+  
     const spaPath = window.location.pathname + window.location.search;
     sessionStorage.setItem("postLoginPath", spaPath);
-
-    openModal(document.getElementById("loginModal"));
+  
+    appReset("auth-failed");
     throw new Error("Unauthenticated");
   }
-
   return res;
 }
-
-
-function resetAppStateToAnon() {
-  // ---- DM ----
-  resetChatState();
-
-  // ---- Main app ----
-  const root = document.getElementById("app-root");
-  if (root) root.innerHTML = "";
-
-  history.replaceState({}, "", "/");
-}
-
 
 export function setAuthState(isLoggedIn) {
   document.body.dataset.showLogin = isLoggedIn ? "0" : "1";
@@ -161,10 +145,8 @@ export function initLogout() {
     }
   
     setAuthState(false);
-    resetAppStateToAnon();
-  
+    appReset("logout");  
     sessionStorage.setItem("postLoginPath", "/home");
-    openModal(document.getElementById("loginModal"));
   });
   
 }

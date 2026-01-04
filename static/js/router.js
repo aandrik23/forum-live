@@ -1,11 +1,11 @@
 import { loadPage } from "./loadPage.js";
-import { openModal } from "./utils.js";
+
 export function navigate(path) {
   const isAnon = document.body.dataset.showLogin === "1";
 
   if (isAnon) {
     sessionStorage.setItem("postLoginPath", path);
-    openModal(document.getElementById("loginModal"));
+    appReset("route-auth-required");
     return;
   }
 

@@ -5,7 +5,7 @@ import { initFilterModal } from "./navigation.js";
 import { getCookie } from "./utils.js";
 import { renderProfileFromJSON } from "./renderProfile.js"; // new file (recommended)
 import { navigate } from "./router.js";
-import { fillCsrfInputs, openModal } from "./utils.js";
+import { fillCsrfInputs } from "./utils.js";
 import { setAuthState, isLoggedIn, authFetch } from "./auth.js";
 import { initLikeButtons, initCommentForm } from "./comments.js";
 let isLoading = false;
@@ -56,14 +56,8 @@ export async function loadPage(path) {
     // AUTH GATE
     if (!isLoggedIn()) {
       sessionStorage.setItem("postLoginPath", path);
-  
-      // wipe app content
-      const root = document.getElementById("app-root");
-      if (root) root.innerHTML = "";
-  
-      // force login modal
-      openModal(document.getElementById("loginModal"));
-      return; //  stop ALL fetching/rendering
+      appReset("route-auth-required");
+      return;
     }
   
   if (isLoading) return;

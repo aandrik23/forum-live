@@ -3,10 +3,20 @@ import { initPageContent, loadPage } from "./loadPage.js";
 import { initProfileDislikesRedirect, initProfileLikesRedirect, initProfilePostsRedirect } from "./profile.js";
 import { initNavLinks, initSidebarToggle, initThemeToggle } from "./navigation.js";
 import { initLinkInterceptor } from "./router.js";
-import { fillCsrfInputs } from "./utils.js";
+import { fillCsrfInputs, openModal } from "./utils.js";
 import { initCommentForm, initLikeButtons } from "./comments.js";
 import { setAuthState } from "./auth.js";
+import { onAppReset } from "./appReset.js";
 
+onAppReset(() => {
+  setAuthState(false);
+
+  const root = document.getElementById("app-root");
+  if (root) root.innerHTML = "";
+
+  history.replaceState({}, "", "/");
+  openModal(document.getElementById("loginModal"));
+});
 // ------------------ INITIALIZATION ------------------
 document.addEventListener('DOMContentLoaded', () => {
   const loggedIn = document.body.dataset.showLogin !== "1";

@@ -1,5 +1,9 @@
 import { authFetch } from "./auth.js";
+import { onAppReset } from "./appReset.js";
 
+onAppReset(() => {
+  resetChatState();
+});
 // -----------------------------
 // DM state
 // -----------------------------
