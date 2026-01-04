@@ -1,6 +1,6 @@
 import {getCookie, isAnonymous} from "./utils.js";
 import { authFetch } from "./auth.js";
-import { escapeHtml, formatGoDate } from "./render.js";
+import { escapeHtml, formatGoDate } from "./render/renderUtils.js";
 
 //NEW COMMENT
 let commentsBound = false;

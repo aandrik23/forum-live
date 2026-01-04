@@ -1,13 +1,18 @@
-import { renderHomeFromJSON, renderCreatePostFromJSON, renderPostFromJSON, renderNavbarCategories } from "./render.js";
-import {initDeletePostModal, initPostPreviewModal} from "./posts.js";
-import {initProfileModal} from "./profile.js";
+import { renderHomeFromJSON } from "./render/home.js";
+import { renderCreatePostFromJSON } from "./render/createPost.js";
+import { renderPostFromJSON } from "./render/post.js";
+import { renderNavbarCategories } from "./render/navbar.js";
+import { renderProfileFromJSON } from "./render/profile.js";
+
+import { initDeletePostModal, initPostPreviewModal } from "./posts.js";
+import { initProfileModal } from "./profile.js";
 import { initFilterModal } from "./navigation.js";
+import { initLikeButtons, initCommentForm } from "./comments.js";
+
 import { getCookie } from "./utils.js";
-import { renderProfileFromJSON } from "./renderProfile.js"; // new file (recommended)
 import { navigate } from "./router.js";
 import { fillCsrfInputs } from "./utils.js";
 import { setAuthState, isLoggedIn, authFetch } from "./auth.js";
-import { initLikeButtons, initCommentForm } from "./comments.js";
 import { appReset } from "./appReset.js";
 
 let isLoading = false;
@@ -38,8 +43,10 @@ async function loadHomeAPI(path) {
     
     const data = await res.json();
     setAuthState(!!data.user);
-    renderNavbarCategories(data.categories);
-
+    const list = document.getElementById("categoriesList");
+    if (list) {
+      list.innerHTML = renderNavbarCategories(data.categories);
+    }
     const appRoot = document.getElementById("app-root");
     if (!appRoot) return;
   

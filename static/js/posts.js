@@ -1,5 +1,6 @@
 import { initLikeButtons } from "./comments.js";
 import { openModal, closeModal, getCookie, isAnonymous } from "./utils.js";
+import { escapeHtml } from "./render/renderUtils.js";
 import { navigate } from "./router.js"
 import { authFetch } from "./auth.js";
 

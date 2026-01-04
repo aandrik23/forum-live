@@ -14,8 +14,6 @@ export function navigate(path) {
   loadPage(path);
 }
 
-
-
 // Intercept internal links
 export function initLinkInterceptor() {
   document.addEventListener("click", (e) => {

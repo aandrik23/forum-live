@@ -1,5 +1,6 @@
 import { authFetch } from "./auth.js";
 import { onAppReset } from "./appReset.js";
+import { escapeHtml } from "./render/renderUtils.js";
 
 onAppReset(() => {
   resetChatState();
@@ -78,15 +79,6 @@ function sortUsers(users) {
   });
 }
 
-function escapeHTML(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
 function fmtTime(unixSec) {
   const d = new Date(unixSec * 1000);
   // Keep it simple; you can style later
@@ -154,8 +146,8 @@ function renderUsers(users) {
     div.dataset.userId = String(user.id);
     div.innerHTML = `
         <div class="chat-user-left">
-          <span class="chat-username">${escapeHTML(user.username)}</span>
-          ${user.lastMessageBody ? `<div class="chat-last">${escapeHTML(user.lastMessageBody)}</div>` : ``}
+          <span class="chat-username">${escapeHtml(user.username)}</span>
+          ${user.lastMessageBody ? `<div class="chat-last">${escapeHtml(user.lastMessageBody)}</div>` : ``}
         </div>
         <div class="chat-user-right">
           ${user.lastMessageAt ? `<div class="chat-last-time">${fmtTime(user.lastMessageAt)}</div>` : ``}
@@ -186,7 +178,7 @@ function openChat(user) {
   panel.id = "chat-panel";
   panel.innerHTML = `
       <div id="chat-panel-header">
-        <span>Chat with ${escapeHTML(user.username)}</span>
+        <span>Chat with ${escapeHtml(user.username)}</span>
         <div class="chat-panel-actions">
           <button id="chat-minimize" aria-label="Minimize chat">—</button>
           <button id="chat-close" aria-label="Close chat">×</button>
@@ -256,7 +248,7 @@ function renderMessages() {
   el.innerHTML = activeMessages
     .map(m => {
       const when = fmtTime(m.created_at);
-      const body = escapeHTML(m.body);
+      const body = escapeHtml(m.body);
 
       const isMine = m.sender_id === CURRENT_USER_ID;
 
