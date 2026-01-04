@@ -31,8 +31,6 @@ export function initFilterModal() {
     filterForm.addEventListener('submit', e => {
       e.preventDefault();
   
-      const isAnon = document.body.dataset.showLogin === "1";
-  
       const sortValue = filterForm.sort ? filterForm.sort.value : "";
       const selectedCategories = [...filterForm.querySelectorAll('input[name="category"]:checked')]
         .map(cb => cb.value);

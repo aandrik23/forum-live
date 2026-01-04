@@ -1,4 +1,4 @@
-import { openModal, closeModal, syncTheme } from "./utils.js";
+import { openModal, closeModal, syncTheme, isAnonymous } from "./utils.js";
 import { appReset } from "./appReset.js";
 
 const footerLoginLink = document.getElementById("footerLoginLink");
@@ -187,8 +187,7 @@ export function initAuthModals() {
   // Global close buttons
   globalCloseBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      const isAnon = document.body.dataset.showLogin === "1";
-      if (isAnon) return; // 🔒 block close
+      if (isAnonymous()) return; // 🔒 block close
   
       const modal = btn.closest('.modal-overlay');
       closeModal(modal);

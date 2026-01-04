@@ -1,9 +1,8 @@
 import { loadPage } from "./loadPage.js";
+import { isAnonymous } from "./utils.js";
 
 export function navigate(path) {
-  const isAnon = document.body.dataset.showLogin === "1";
-
-  if (isAnon) {
+  if (isAnonymous()) {
     sessionStorage.setItem("postLoginPath", path);
     appReset("route-auth-required");
     return;

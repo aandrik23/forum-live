@@ -160,10 +160,9 @@ export function initProfileLikesRedirect() {
 
   btn.addEventListener('click', (e) => {
     e.preventDefault();
-    const isAnon = document.body.dataset.showLogin === "1";
     const path = '/home?filter=liked';
 
-    if (isAnon) {
+    if (isAnonymous()) {
       navigate(path)
     } else {
       navigate(path);
@@ -192,10 +191,9 @@ export function initProfilePostsRedirect() {
 
   btn.addEventListener('click', (e) => {
     e.preventDefault();
-    const isAnon = document.body.dataset.showLogin === "1";
     const path = '/home?filter=created';
 
-    if (isAnon) {
+    if ((isAnonymous())) {
       navigate(path);
     } else {
       navigate(path);

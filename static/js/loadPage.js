@@ -8,6 +8,8 @@ import { navigate } from "./router.js";
 import { fillCsrfInputs } from "./utils.js";
 import { setAuthState, isLoggedIn, authFetch } from "./auth.js";
 import { initLikeButtons, initCommentForm } from "./comments.js";
+import { appReset } from "./appReset.js";
+
 let isLoading = false;
 
 window.addEventListener('popstate', () => {
