@@ -112,6 +112,10 @@ function throttle(fn, waitMs) {
   };
 }
 
+function isChatPanelMinimized() {
+  return document.getElementById("chat-panel")?.classList.contains("minimized") || false;
+}
+
 // -----------------------------
 // DOM creation
 // -----------------------------
@@ -197,6 +201,8 @@ function openChat(user) {
     // minimize chat
     document.getElementById("chat-minimize").addEventListener("click", () => {
         panel.classList.toggle("minimized");
+        renderMessages();
+        sendReadReceipt();
       });
   
   // close chat
@@ -261,7 +267,7 @@ function renderMessages() {
       const isRead = isMine && m.id <= lastRead;
       const isDelivered = isMine && deliveryStatusMap.has(m.id);
 
-      if (isRead) {
+      if (isRead && !isChatPanelMinimized()) {
         status = "Read";
       } else if (isDelivered) {
         status = "Delivered";
@@ -329,6 +335,7 @@ async function loadThreads() {
 function sendReadReceipt() {
   if (!activeChatUser || activeMessages.length === 0) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (isChatPanelMinimized()) return;
 
   const lastMsg = activeMessages[activeMessages.length - 1];
 
