@@ -330,12 +330,7 @@ main {
 .newpost-btn:hover {
     background-image: url("/static/img/create-icon-hover.png");
 }
-.search-btn {
-    background-image: url("/static/img/search-icon.png");
-}
-.search-btn:hover {
-    background-image: url("/static/img/search-icon-hover.png");
-}
+
 .notif-btn {
     background-image: url("/static/img/notification-icon.png");
 }
@@ -361,12 +356,7 @@ html.dark-mode .newpost-btn {
 html.dark-mode .newpost-btn:hover {
     background-image: url("/static/img/create-icon-hover.png");
 }
-html.dark-mode .search-btn {
-    background-image: url("/static/img/search-icon-dark.png");
-}
-html.dark-mode .search-btn:hover {
-    background-image: url("/static/img/search-icon-hover.png");
-}
+
 html.dark-mode .notif-btn {
     background-image: url("/static/img/notification-icon-dark.png");
 }
@@ -768,28 +758,24 @@ body[data-show-login="1"] #sidebar-toggle {
 .home-btn     { background-image: url("/static/img/home-icon.png"); }
 .profile-btn  { background-image: url("/static/img/profile-icon.png"); }
 .create-btn   { background-image: url("/static/img/create-icon.png"); }
-.filter-btn   { background-image: url("/static/img/filters.png"); }
-.settings-btn { background-image: url("/static/img/settings.png"); }
+
 
 /* Hover swaps (optional if you have hover versions) */
 .home-btn:hover     { background-image: url("/static/img/home-icon-hover.png"); }
 .profile-btn:hover  { background-image: url("/static/img/profile-icon-hover.png"); }
 .create-btn:hover   { background-image: url("/static/img/create-icon-hover.png"); }
-.filter-btn:hover   { background-image: url("/static/img/filters-hover.png"); }
-.settings-btn:hover { background-image: url("/static/img/settings-hover.png"); }
+
 
 /* Dark-mode overrides */
 html.dark-mode .home-btn     { background-image: url("/static/img/home-icon-dark.png"); }
 html.dark-mode .profile-btn  { background-image: url("/static/img/profile-icon-dark.png"); }
 html.dark-mode .create-btn   { background-image: url("/static/img/create-icon-dark.png"); }
-html.dark-mode .filter-btn   { background-image: url("/static/img/filters-dark.png"); }
-html.dark-mode .settings-btn { background-image: url("/static/img/settings-dark.png"); }
+
 
 html.dark-mode .home-btn:hover     { background-image: url("/static/img/home-icon-hover.png"); }
 html.dark-mode .profile-btn:hover  { background-image: url("/static/img/profile-icon-hover.png"); }
 html.dark-mode .create-btn:hover   { background-image: url("/static/img/create-icon-hover.png"); }
-html.dark-mode .filter-btn:hover   { background-image: url("/static/img/filters-hover.png"); }
-html.dark-mode .settings-btn:hover { background-image: url("/static/img/settings-hover.png"); }
+
 
 
 
